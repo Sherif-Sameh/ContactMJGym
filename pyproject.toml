@@ -1,0 +1,31 @@
+[project]
+name = "contact_gym"
+version = "0.0.1"
+readme = "README.md"
+requires-python = ">=3.11,<3.13"
+dependencies = [
+    "numpy >= 2.0",
+    "mujoco >= 3.5.0",
+    "robot_descriptions == 3.1.0",
+    "fire",
+]
+
+[tool.pixi.workspace]
+channels = ["conda-forge"]
+platforms = ["linux-64"]
+
+[tool.pixi.pypi-dependencies]
+contact_gym = { path = ".", editable = true }
+
+[tool.pixi.tasks]
+fetch-robots = { cmd = "python scripts/fetch_robots.py" }
+
+[tool.pytest.ini_options]
+markers = ["unit"]
+
+[tool.pixi.environments]
+test = ["test"]
+
+# Setup environment for testing
+[tool.pixi.feature.test.pypi-dependencies]
+pytest = ">=8.4"
