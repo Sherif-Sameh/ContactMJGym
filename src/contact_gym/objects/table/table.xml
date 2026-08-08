@@ -1,0 +1,30 @@
+<mujoco model="table">
+  <compiler angle="radian"/>
+
+  <default>
+    <default class="table">
+      <geom type="box" group="1" size="0.30 0.25 0.02" material="tabletop_wood"/>
+      <default class="leg">
+        <geom size="0.025 0.025 0.155" material="leg_black"/>
+      </default>
+      <site size="0.001" rgba="0.5 0.5 0.5 0.3" group="4"/>
+    </default>
+  </default>
+
+  <asset>
+    <material name="tabletop_wood" rgba="0.45 0.25 0.10 1"/>
+    <material name="leg_black" rgba="0.02 0.02 0.02 1"/>
+  </asset>
+
+  <worldbody>
+    <body name="table" childclass="table">
+      <geom name="tabletop" pos="0 0 0.33" friction="1.0 0.005 0.0001"/>
+      <geom name="leg_fl" pos="-0.255 -0.205 0.155" class="leg"/>
+      <geom name="leg_fr" pos="0.255 -0.205 0.155" class="leg"/>
+      <geom name="leg_rl" pos="-0.255 0.205 0.155" class="leg"/>
+      <geom name="leg_rr" pos="0.255 0.205 0.155" class="leg"/>
+      <!-- Reference pose marker for placing objects -->
+      <site name="tabletop_center" pos="0 0 0.351"/>
+    </body>
+  </worldbody>
+</mujoco>

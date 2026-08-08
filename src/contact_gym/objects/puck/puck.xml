@@ -1,0 +1,20 @@
+<mujoco model="puck">
+  <compiler angle="radian"/>
+
+  <default>
+    <default class="puck">
+      <geom type="cylinder" group="1" condim="4" friction="0.8 0.02 0.01" density="300"/>
+    </default>
+  </default>
+
+  <asset>
+    <material name="puck_material" rgba="0.05 0.85 0.95 1"/>
+  </asset>
+
+  <worldbody>
+    <body name="puck" pos="0 0 0.0175">
+      <freejoint name="puck_joint"/>
+      <geom name="puck_geom" class="puck" size="0.060 0.0175" material="puck_material"/>
+    </body>
+  </worldbody>
+</mujoco>
