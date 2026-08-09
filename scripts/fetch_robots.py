@@ -5,7 +5,6 @@ from pathlib import Path
 from robot_descriptions import (
     fr3_mj_description,
     panda_mj_description,
-    robotiq_2f85_mj_description,
     ur10e_mj_description,
 )
 
@@ -28,16 +27,12 @@ def fetch_robot(mod) -> None:
     )
     for img_file in image_files:
         img_file.unlink()
-    (robot_path / "scene.xml").unlink(missing_ok=True)
-    (robot_path / "mjx_scene.xml").unlink(missing_ok=True)
 
 
 if __name__ == "__main__":
-    # fetch Franka Robotics FER
+    # fetch Franka Robotics Emika Panda
     fetch_robot(panda_mj_description)
     # fetch Franka Robotics FR3
     fetch_robot(fr3_mj_description)
     # fetch Universal Robots UR10e
     fetch_robot(ur10e_mj_description)
-    # fetch Robotiq 2F-85 Gripper
-    fetch_robot(robotiq_2f85_mj_description)
