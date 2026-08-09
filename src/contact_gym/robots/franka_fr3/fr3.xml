@@ -64,6 +64,8 @@
     <mesh name="link5_coll" file="link5.stl"/>
     <mesh name="link6_coll" file="link6.stl"/>
     <mesh name="link7_coll" file="link7.stl"/>
+    
+    <model name="panda_hand" file="../franka_emika_panda/hand.xml"/>
   </asset>
 
   <worldbody>
@@ -137,6 +139,9 @@
                       <geom mesh="link7_3" material="black" class="visual"/>
                       <geom name="fr3_link7_collision" class="collision" mesh="link7_coll"/>
                       <site name="attachment_site" pos="0 0 0.107"/>
+                      <frame pos="0 0 0.107">
+                        <attach model="panda_hand" body="hand" prefix="hand-"/>
+                      </frame>
                     </body>
                   </body>
                 </body>
@@ -163,6 +168,8 @@
   </contact>
 
   <keyframe>
-    <key name="home" qpos="0 0 0 -1.57079 0 1.57079 -0.7853" ctrl="0 0 0 -1.57079 0 1.57079 -0.7853"/>
+    <key name="home"
+      qpos="0 0 0 -1.57079 0 1.57079 -0.7853 0.04 0.04"
+      ctrl="0 0 0 -1.57079 0 1.57079 -0.7853 255"/>
   </keyframe>
 </mujoco>

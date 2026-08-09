@@ -4,7 +4,7 @@ from contact_gym.objects import ALL_OBJECTS, OBJECT_PATHS
 from contact_gym.robots import ALL_ROBOTS, ROBOT_PATHS
 
 
-def build_scene(robot: str = "panda", object: str = "block") -> mujoco.MjSpec:
+def build_edge_grasp(robot: str = "panda", object: str = "block") -> mujoco.MjSpec:
     """Dynamically build the scene for the EdgeGrasp environment.
 
     Loads the robot + gripper + common elements (ground, light) spec and adds object on top of the
