@@ -1,14 +1,14 @@
 import mujoco
 
 from contact_gym.objects import ALL_OBJECTS, OBJECT_PATHS
-from contact_gym.robots import ALL_ROBOTS, ROBOT_PATHS
+from contact_gym.robots import ALL_ROBOTS, HOME_KEYS, ROBOT_PATHS
 
 
 def build_edge_grasp(robot: str = "panda", object: str = "block") -> mujoco.MjSpec:
     """Dynamically build the scene for the EdgeGrasp environment.
 
-    Loads the robot + gripper + common elements (ground, light) spec and adds object on top of the
-    table.
+    Loads the robot + gripper + common elements (ground, light) spec, sets robot home keyframe, and
+    adds object on top of the table.
 
     Args:
         robot: Choice of robot manipulator. Default is panda.
@@ -25,6 +25,10 @@ def build_edge_grasp(robot: str = "panda", object: str = "block") -> mujoco.MjSp
     )
     # Load robot + gripper scene
     scene_spec = mujoco.MjSpec.from_file(ROBOT_PATHS[robot])
+    home_key = scene_spec.key("home")
+    assert home_key is not None, "Scene does not have a home key."
+    home_key.qpos = HOME_KEYS["EdgeGrasp"][robot]["qpos"]
+    home_key.ctrl = HOME_KEYS["EdgeGrasp"][robot]["ctrl"]
     # Load table and attach it
     TABLE_POS = (0, 0.5, 0.0)
     table_spec = mujoco.MjSpec.from_file(OBJECT_PATHS["table"])
