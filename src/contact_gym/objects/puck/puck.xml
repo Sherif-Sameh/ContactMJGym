@@ -3,7 +3,8 @@
 
   <default>
     <default class="puck">
-      <geom type="cylinder" group="1" condim="4" friction="0.8 0.02 0.01" density="300"/>
+      <geom type="cylinder" contype="3" conaffinity="3" condim="4" group="1"
+        friction="0.8 0.02 0.01" density="300"/>
     </default>
   </default>
 
