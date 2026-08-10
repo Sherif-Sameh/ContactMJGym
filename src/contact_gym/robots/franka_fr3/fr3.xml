@@ -14,7 +14,7 @@
       <default class="collision">
         <geom type="mesh" group="3" mass="0" density="0"/>
       </default>
-      <site size="0.001" rgba="0.5 0.5 0.5 0.3" group="4"/>
+      <!-- <site size="0.001" rgba="0.5 0.5 0.5 0.3" group="4"/> -->
     </default>
   </default>
 
@@ -138,7 +138,7 @@
                       <geom mesh="link7_2" material="white" class="visual"/>
                       <geom mesh="link7_3" material="black" class="visual"/>
                       <geom name="fr3_link7_collision" class="collision" mesh="link7_coll"/>
-                      <site name="attachment_site" pos="0 0 0.107"/>
+                      <!-- <site name="attachment_site" pos="0 0 0.107"/> -->
                       <frame pos="0 0 0.107">
                         <attach model="panda_hand" body="hand" prefix="hand-"/>
                       </frame>
