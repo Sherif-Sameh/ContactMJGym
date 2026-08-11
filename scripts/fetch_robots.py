@@ -2,11 +2,7 @@ import itertools
 import shutil
 from pathlib import Path
 
-from robot_descriptions import (
-    fr3_mj_description,
-    panda_mj_description,
-    ur10e_mj_description,
-)
+from robot_descriptions import fr3_mj_description, panda_mj_description, ur10e_mj_description
 
 import contact_gym
 

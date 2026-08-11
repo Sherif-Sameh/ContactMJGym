@@ -17,12 +17,8 @@ def build_edge_grasp(robot: str = "panda", object: str = "block") -> mujoco.MjSp
     Returns:
         Composed environment MjSpec.
     """
-    assert robot in ALL_ROBOTS, (
-        f"Unsupported robot {robot}. Must be one of {ALL_ROBOTS}."
-    )
-    assert object in ALL_OBJECTS, (
-        f"Unsupported object {object}. Must be one of {ALL_OBJECTS}."
-    )
+    assert robot in ALL_ROBOTS, f"Unsupported robot {robot}. Must be one of {ALL_ROBOTS}."
+    assert object in ALL_OBJECTS, f"Unsupported object {object}. Must be one of {ALL_OBJECTS}."
     # Load robot + gripper scene
     scene_spec = mujoco.MjSpec.from_file(ROBOT_PATHS[robot])
     home_key = scene_spec.key("home")

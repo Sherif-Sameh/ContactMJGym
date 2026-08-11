@@ -26,12 +26,7 @@ class MujocoBaseEnv(ABC, gym.Env):
 
     metadata = {"render_modes": ["rgb_array"]}  # noqa: RUF012
 
-    def __init__(
-        self,
-        spec: mujoco.MjSpec,
-        frame_skip: int = 10,
-        render_mode: str | None = None,
-    ):
+    def __init__(self, spec: mujoco.MjSpec, frame_skip: int = 10, render_mode: str | None = None):
         assert frame_skip >= 1, f"Frame skip must be >= 1. Got {frame_skip}."
         assert render_mode is None or render_mode in self.metadata["render_modes"], (
             f"Invalid rendering mode {render_mode}. Must be in {self.metadata['render_modes']}."
