@@ -11,7 +11,7 @@ from gymnasium import spaces
 if TYPE_CHECKING:
     from numpy.typing import NDArray
 
-    ActType = ObsType = NDArray[np.float64]
+    ActType = ObsType = NDArray[np.float32]
     InfoType = dict[str, Any]
     RGBType = NDArray[np.uint8]
 
@@ -38,15 +38,14 @@ class MujocoBaseEnv(ABC, gym.Env):
         )
         self._model = spec.compile()
         self._data = mujoco.MjData(self._model)
-        self.frame_skip = frame_skip
+        self._frame_skip = frame_skip
         self.render_mode = render_mode
         self._renderer = None
+        self._home_key_id = self._set_home_key()
         # Setup action space
-        n_act = self._model.nu
         ctrl_low = self._model.actuator_ctrlrange[:, 0]
         ctrl_high = self._model.actuator_ctrlrange[:, 1]
         self.action_space = spaces.Box(low=ctrl_low, high=ctrl_high, dtype=np.float32)
-        self._last_action = np.zeros(n_act, dtype=np.float32)
 
     # region Core API
 
@@ -54,18 +53,24 @@ class MujocoBaseEnv(ABC, gym.Env):
         self, seed: int | None = None, options: dict[str, Any] | None = None
     ) -> tuple[ObsType, InfoType]:
         super().reset(seed=seed)
-        mujoco.mj_resetData(self._model, self._data)
+        mujoco.mj_resetDataKeyframe(self._model, self._data, self._home_key_id)
         self._reset_data()
         mujoco.mj_forward(self._model, self._data)
-        self._last_action[:] = 0.0
         return self._get_obs(), self._get_info()
 
     def step(self, action: ActType) -> tuple[ObsType, float, bool, bool, InfoType]:
         # Apply action in environment
         action = np.clip(action, self.action_space.low, self.action_space.high)
         self._data.ctrl[:] = action
-        mujoco.mj_step(self._model, self._data, nstep=self.frame_skip)
-        self._last_action = action
+        # Stepping logic follows the step2 -> step1 pattern used in dm_control for updated fields
+        # https://github.com/google-deepmind/dm_control/blob/main/dm_control/mujoco/engine.py#L147
+        if self._model.opt.integrator != mujoco.mjtIntegrator.mjINT_RK4:
+            mujoco.mj_step2(self._model, self._data)
+            if self._frame_skip > 1:
+                mujoco.mj_step(self._model, self._data, self._frame_skip - 1)
+        else:
+            mujoco.mj_step(self._model, self._data, self._frame_skip)
+        mujoco.mj_step1(self._model, self._data)
         reward, terminated = self._compute_reward(action)
         return self._get_obs(), reward, terminated, False, self._get_info()
 
@@ -102,3 +107,19 @@ class MujocoBaseEnv(ABC, gym.Env):
         Returns:
             tuple containing the reward and termination signal.
         """
+
+    def _set_home_key(self) -> int:
+        """Set the home keyframe for free objects in the scene."""
+        assert self._model.key("home") is not None, "Scene does not have a home key."
+        home_key_id = self._model.key("home").id
+        for jnt_id in range(self._model.njnt):
+            jnt_type = self._model.jnt_type[jnt_id]
+            if jnt_type != mujoco.mjtJoint.mjJNT_FREE:
+                continue
+            qpos_adr = self._model.jnt_qposadr[jnt_id]
+            qvel_adr = self._model.jnt_dofadr[jnt_id]
+            initial_qpos = self._data.qpos[qpos_adr : qpos_adr + 7].copy()
+            initial_qvel = self._data.qvel[qvel_adr : qvel_adr + 6].copy()
+            self._model.key_qpos[home_key_id, qpos_adr : qpos_adr + 7] = initial_qpos
+            self._model.key_qvel[home_key_id, qvel_adr : qvel_adr + 6] = initial_qvel
+        return home_key_id
