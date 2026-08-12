@@ -47,9 +47,10 @@ class MujocoBaseEnv(ABC, gym.Env):
     def reset(
         self, seed: int | None = None, options: dict[str, Any] | None = None
     ) -> tuple[ObsType, InfoType]:
-        super().reset(seed=seed)
+        super().reset(seed=seed, options=options)
         mujoco.mj_resetDataKeyframe(self._model, self._data, self._home_key_id)
         self._reset_data()
+        self._apply_options(options)
         mujoco.mj_forward(self._model, self._data)
         return self._get_obs(), self._get_info()
 
@@ -120,3 +121,17 @@ class MujocoBaseEnv(ABC, gym.Env):
             self._model.key_qpos[home_key_id, qpos_adr : qpos_adr + 7] = initial_qpos
             self._model.key_qvel[home_key_id, qvel_adr : qvel_adr + 6] = initial_qvel
         return home_key_id
+
+    def _apply_options(self, options: dict[str, Any] | None) -> None:
+        """Apply state overrides in options dict."""
+        if not options:
+            return
+        qpos = options.get("qpos")
+        qvel = options.get("qvel")
+        ctrl = options.get("ctrl")
+        if qpos is not None:
+            self._data.qpos[:] = qpos
+        if qvel is not None:
+            self._data.qvel[:] = qvel
+        if ctrl is not None:
+            self._data.ctrl[:] = ctrl
