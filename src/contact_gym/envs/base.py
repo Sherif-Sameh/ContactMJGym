@@ -66,8 +66,9 @@ class MujocoBaseEnv(ABC, gym.Env):
         else:
             mujoco.mj_step(self._model, self._data, self._frame_skip)
         mujoco.mj_step1(self._model, self._data)
-        reward, terminated = self._compute_reward(action)
-        return self._get_obs(), reward, terminated, False, self._get_info()
+        obs = self._get_obs()
+        reward, terminated = self._compute_reward(obs, action)
+        return obs, reward, terminated, False, self._get_info()
 
     def render(self) -> RGBType:
         if self._renderer is None:
@@ -93,14 +94,15 @@ class MujocoBaseEnv(ABC, gym.Env):
         """Get the latest info dict."""
 
     @abstractmethod
-    def _compute_reward(self, action: ActType) -> tuple[float, bool]:
+    def _compute_reward(self, obs: ObsType, act: ActType) -> tuple[float, bool]:
         """Compute the reward and termination signal.
 
         Args:
-            action: Latest action. Useful for action penalties.
+            obs: Latest observation.
+            act: Latest action.
 
         Returns:
-            tuple containing the reward and termination signal.
+            tuple containing the reward and termination signals.
         """
 
     def _set_home_key(self) -> int:
