@@ -29,7 +29,7 @@
         <geom type="mesh" contype="0" conaffinity="0" group="2"/>
       </default>
       <default class="collision">
-        <geom type="capsule" group="3"/>
+        <geom type="capsule" contype="1" conaffinity="15" group="3"/>
         <default class="eef_collision">
           <geom type="cylinder"/>
         </default>
@@ -143,6 +143,14 @@
     <general class="size2" name="wrist_2" joint="wrist_2_joint"/>
     <general class="size2" name="wrist_3" joint="wrist_3_joint"/>
   </actuator>
+
+  <sensor>
+    <contact name="impact"
+      subtree1="base"
+      reduce="maxforce"
+      num="1"
+      data="force"/>
+  </sensor>
 
   <keyframe>
     <key name="home"

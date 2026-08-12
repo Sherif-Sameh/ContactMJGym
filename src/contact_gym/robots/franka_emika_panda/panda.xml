@@ -13,7 +13,7 @@
         <geom type="mesh" contype="0" conaffinity="0" group="2"/>
       </default>
       <default class="collision">
-        <geom type="mesh" group="3" mass="0" density="0"/>
+        <geom type="mesh" contype="1" conaffinity="15" group="3" mass="0" density="0"/>
       </default>
       <!-- <site size="0.001" rgba="0.5 0.5 0.5 0.3" group="4"/> -->
     </default>
@@ -211,6 +211,14 @@
       ctrlrange="-0.0175 3.7525"/>
     <general class="panda" name="actuator7" joint="joint7" gainprm="2000" biasprm="0 -2000 -200" forcerange="-12 12"/>
   </actuator>
+
+  <sensor>
+    <contact name="impact"
+      subtree1="link0"
+      reduce="maxforce"
+      num="1"
+      data="force"/>
+  </sensor>
 
   <keyframe>
     <key name="home"

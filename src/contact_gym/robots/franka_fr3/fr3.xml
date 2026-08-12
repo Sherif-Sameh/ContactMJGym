@@ -12,7 +12,7 @@
         <geom type="mesh" group="2" contype="0" conaffinity="0"/>
       </default>
       <default class="collision">
-        <geom type="mesh" group="3" mass="0" density="0"/>
+        <geom type="mesh" contype="1" conaffinity="15" group="3" mass="0" density="0"/>
       </default>
       <!-- <site size="0.001" rgba="0.5 0.5 0.5 0.3" group="4"/> -->
     </default>
@@ -162,6 +162,14 @@
     <position class="fr3" name="fr3_joint6" joint="fr3_joint6" kp="2000" kv="200"/>
     <position class="fr3" name="fr3_joint7" joint="fr3_joint7" kp="2000" kv="200"/>
   </actuator>
+
+  <sensor>
+    <contact name="impact"
+      subtree1="fr3_link0"
+      reduce="maxforce"
+      num="1"
+      data="force"/>
+  </sensor>
 
   <contact>
     <exclude body1="fr3_link0" body2="fr3_link1"/>

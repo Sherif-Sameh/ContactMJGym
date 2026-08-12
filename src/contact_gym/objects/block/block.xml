@@ -3,7 +3,7 @@
 
   <default>
     <default class="block">
-      <geom type="box" contype="3" conaffinity="3" condim="4" group="1"
+      <geom type="box" contype="8" conaffinity="15" condim="4" group="1"
         friction="0.8 0.02 0.01" density="300"/>
     </default>
   </default>
