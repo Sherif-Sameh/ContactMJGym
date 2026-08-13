@@ -5,15 +5,15 @@ import mujoco.viewer
 
 import contact_gym  # noqa: F401
 
-ENV_IDS = [
-    env_id
+INTERNAL_ENV_IDS = [
+    env_id.split("/")[-1]
     for env_id, spec in gym.registry.items()
     if isinstance(spec.entry_point, str) and spec.entry_point.startswith("contact_gym.")
 ]
 
 
 def main(
-    env: str,
+    env_name: str,
     rand_act: bool = False,
     pert_scale: float = 3e-4,
     render_interval: int = 1,
@@ -24,7 +24,7 @@ def main(
     """Launch a live MuJoCo viewer window for a registered gymnasium env.
 
     Args:
-        env: Registered gymnasium environment ID (e.g., "MujocoEdgeGrasp-v0").
+        env_name: Registered gymnasium environment ID (e.g., "MujocoEdgeGrasp-v0").
         rand_act: Sample a random perturbation to the env's current ctrl at every step.
             Otherwise, apply the initial ctrl at every step. Default value is False.
         pert_scale: Scale factor for random action perturbations. Default value is 3e-4.  
@@ -36,20 +36,19 @@ def main(
         kwargs: Optional extra kwargs forwarded to gym.make (e.g., '{"frame_skip": 10}').
 
     Usage:
-        python simple_agent.py --env "MujocoEdgeGrasp-v0"
+        python simple_agent.py --env_name "MujocoEdgeGrasp-v0"
 
         python simple_agent.py \
-            --env "MujocoEdgeGrasp-v0" \
+            --env_name "MujocoEdgeGrasp-v0" \
             --rand_act \
             --render_interval 3 \
             --max_steps 500 \
             --seed 0 \
             --kwargs '{"frame_skip": 20}'
     """
-    env = f"contact_gym/{env}"
-    assert env in ENV_IDS, f"Unsupported environment {env}. Must be one of {ENV_IDS}."
+    env_name = f"contact_gym/{env_name}" if env_name in INTERNAL_ENV_IDS else env_name
     kwargs = kwargs if kwargs else {}
-    env = gym.make(env, **kwargs)
+    env = gym.make(env_name, **kwargs)
     unwrapped = env.unwrapped
     assert hasattr(unwrapped, "model") and hasattr(unwrapped, "data"), (
         "Environment does not expose MuJoCo model and data structs."
