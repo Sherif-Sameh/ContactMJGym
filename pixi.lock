@@ -153,7 +153,7 @@ packages:
 - pypi: ./
   name: contact-gym
   version: 0.0.1
-  sha256: 30e2452c3041fe61cf5ab87ed8b1c59d28a6ec18e8719a0643de9e214ca109a3
+  sha256: e2f5ab884173b858d529ebdb61c6d1e091b58414883790633e8143f7a8ac91cf
   requires_dist:
   - numpy>=2.0
   - mujoco>=3.5.0

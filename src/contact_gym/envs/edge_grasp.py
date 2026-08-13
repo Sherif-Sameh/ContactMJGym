@@ -71,8 +71,8 @@ class MujocoEdgeGraspEnv(MujocoBaseEnv):
         con_snsr_adr: int
         obj_qpos_adr: int
         obj_qvel_adr: int
-        gri_qpos_addr: int
-        gri_qvel_addr: int
+        gri_qpos_adr: int
+        gri_qvel_adr: int
         tabletop_site_id: int
         tabletop_height: float
         tabletop_extent: float
@@ -198,15 +198,15 @@ class MujocoEdgeGraspEnv(MujocoBaseEnv):
         geom = self.model.geom("table-tabletop")
         tabletop_pos, tabletop_size = geom.pos, geom.size
         return MujocoEdgeGraspEnv.ModelData(
-            tcp_site_id=self.model.site("hand-tcp").id,
-            con_snsr_adr=self.model.sensor("impact").adr,
-            obj_qpos_adr=self.model.jnt_qposadr[obj_jnt_id],
-            obj_qvel_adr=self.model.jnt_dofadr[obj_jnt_id],
-            gri_qpos_adr=self.model.jnt_qposadr[finger_jnt_id],
-            gri_qvel_adr=self.model.jnt_dofadr[finger_jnt_id],
-            tabletop_site_id=self.model.site("table-tabletop_center").id,
-            tabletop_height=tabletop_pos[2] + tabletop_size[2],
-            tabletop_extent=max(tabletop_size[:2]),
+            tcp_site_id=int(self.model.site("hand-tcp").id),
+            con_snsr_adr=int(self.model.sensor("impact").adr[0]),
+            obj_qpos_adr=int(self.model.jnt_qposadr[obj_jnt_id]),
+            obj_qvel_adr=int(self.model.jnt_dofadr[obj_jnt_id]),
+            gri_qpos_adr=int(self.model.jnt_qposadr[finger_jnt_id]),
+            gri_qvel_adr=int(self.model.jnt_dofadr[finger_jnt_id]),
+            tabletop_site_id=int(self.model.site("table-tabletop_center").id),
+            tabletop_height=float(tabletop_pos[2] + tabletop_size[2]),
+            tabletop_extent=float(max(tabletop_size[:2])),
         )
 
     # region Obs Helpers
@@ -253,7 +253,7 @@ class MujocoEdgeGraspEnv(MujocoBaseEnv):
 
     def _get_gripper_state(self) -> tuple[NDArray, NDArray]:
         """Get gripper finger positions and velocities."""
-        qpos_adr, qvel_adr = self._mdata.gri_qpos_addr, self._mdata.gri_qvel_addr
+        qpos_adr, qvel_adr = self._mdata.gri_qpos_adr, self._mdata.gri_qvel_adr
         gri_pos = self.data.qpos[qpos_adr : qpos_adr + self.GRIPPER_DOFS]
         gri_vel = self.data.qvel[qvel_adr : qvel_adr + self.GRIPPER_DOFS]
         return gri_pos, gri_vel
@@ -291,8 +291,8 @@ class MujocoEdgeGraspEnv(MujocoBaseEnv):
 
     def _get_joint_reward(self) -> tuple[float, float]:
         """Get the robot joint velocity and force squared L2 reward terms."""
-        qvel = self.data.qvel[: self._mdata.gri_qvel_addr]
-        qfrc = self.data.qfrc_actuator[: self._mdata.gri_qvel_addr]
+        qvel = self.data.qvel[: self._mdata.gri_qvel_adr]
+        qfrc = self.data.qfrc_actuator[: self._mdata.gri_qvel_adr]
         qvel_l2_term = float(np.square(qvel).sum())
         qfrc_l2_term = float(np.square(qfrc).sum())
         return qvel_l2_term, qfrc_l2_term
