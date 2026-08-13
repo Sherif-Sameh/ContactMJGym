@@ -34,7 +34,10 @@
           <geom type="cylinder"/>
         </default>
       </default>
-      <!-- <site size="0.001" rgba="0.5 0.5 0.5 0.3" group="4"/> -->
+      <default class="mocap">
+        <geom type="box" conaffinity="0" contype="0" group="4"/>
+      </default>
+      <site size="0.005" rgba="0.5 0.5 0.5 0.3" group="4"/>
     </default>
   </default>
 
@@ -135,7 +138,18 @@
         </body>
       </body>
     </body>
+    <body name="mocap" childclass="ur10e" mocap="true">
+      <geom class="mocap" rgba="0 0.5 0 0.7" size="0.005 0.005 0.005"/>
+      <geom class="mocap" rgba="1 0 0 0.1" size="0.005" fromto="0 0 0 0.3 0 0"/>
+      <geom class="mocap" rgba="0 1 0 0.1" size="0.005" fromto="0 0 0 0 0.3 0"/>
+      <geom class="mocap" rgba="0 0 1 0.1" size="0.005" fromto="0 0 0 0 0 0.3"/>
+      <site name="mocap"/>
+    </body>
   </worldbody>
+
+  <equality>
+    <weld active="false" site1="mocap" site2="hand-tcp" solimp="0.9 0.95 0.001" solref="0.02 1"/>
+  </equality>
 
   <actuator>
     <general class="size4" name="shoulder_pan" joint="shoulder_pan_joint"/>
