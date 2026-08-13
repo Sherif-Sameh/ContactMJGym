@@ -117,7 +117,7 @@ class MujocoEdgeGraspEnv(MujocoBaseEnv):
     # region Env API
 
     def _reset_data(self) -> None:
-        """Apply any additional resets to self._data after `mujoco.mj_resetData`.
+        """Apply any additional resets to self.data after `mujoco.mj_resetData`.
 
         Called before `mujoco.mj_forward`.
         """
@@ -166,7 +166,7 @@ class MujocoEdgeGraspEnv(MujocoBaseEnv):
             tuple containing the reward and termination signals.
         """
         obj_pos, tcp_obj_pos = obs[12:15], obs[24:27]
-        tabletop_pos = self._data.site_xpos[self._mdata.tabletop_site_id]
+        tabletop_pos = self.data.site_xpos[self._mdata.tabletop_site_id]
         obj_height_raw = obj_pos[2] - tabletop_pos[2]
 
         self._rterms.obj_dist = self._get_planar_dist_reward(obj_pos, tabletop_pos, obj_height_raw)
@@ -192,19 +192,19 @@ class MujocoEdgeGraspEnv(MujocoBaseEnv):
     # region Helpers
 
     def _setup_model_data(self) -> MujocoEdgeGraspEnv.ModelData:
-        obj_jnt_id = self._model.joint("object-joint").id
-        assert self._model.sensor("impact").dim == 3
-        finger_jnt_id = self._model.joint("hand-finger_joint1").id
-        geom = self._model.geom("table-tabletop")
+        obj_jnt_id = self.model.joint("object-joint").id
+        assert self.model.sensor("impact").dim == 3
+        finger_jnt_id = self.model.joint("hand-finger_joint1").id
+        geom = self.model.geom("table-tabletop")
         tabletop_pos, tabletop_size = geom.pos, geom.size
         return MujocoEdgeGraspEnv.ModelData(
-            tcp_site_id=self._model.site("hand-tcp").id,
-            con_snsr_adr=self._model.sensor("impact").adr,
-            obj_qpos_adr=self._model.jnt_qposadr[obj_jnt_id],
-            obj_qvel_adr=self._model.jnt_dofadr[obj_jnt_id],
-            gri_qpos_adr=self._model.jnt_qposadr[finger_jnt_id],
-            gri_qvel_adr=self._model.jnt_dofadr[finger_jnt_id],
-            tabletop_site_id=self._model.site("table-tabletop_center").id,
+            tcp_site_id=self.model.site("hand-tcp").id,
+            con_snsr_adr=self.model.sensor("impact").adr,
+            obj_qpos_adr=self.model.jnt_qposadr[obj_jnt_id],
+            obj_qvel_adr=self.model.jnt_dofadr[obj_jnt_id],
+            gri_qpos_adr=self.model.jnt_qposadr[finger_jnt_id],
+            gri_qvel_adr=self.model.jnt_dofadr[finger_jnt_id],
+            tabletop_site_id=self.model.site("table-tabletop_center").id,
             tabletop_height=tabletop_pos[2] + tabletop_size[2],
             tabletop_extent=max(tabletop_size[:2]),
         )
@@ -214,11 +214,11 @@ class MujocoEdgeGraspEnv(MujocoBaseEnv):
     def _get_poses(self) -> tuple[NDArray, NDArray, NDArray, NDArray, NDArray, NDArray]:
         """Get the TCP, object, object-TCP poses as position vectors and rotation matrices."""
         # TCP pose relative to the world frame
-        tcp_pos = self._data.site_xpos[self._mdata.tcp_site_id]
-        tcp_rmat = self._data.site_xmat[self._mdata.tcp_site_id].reshape(3, 3)
+        tcp_pos = self.data.site_xpos[self._mdata.tcp_site_id]
+        tcp_rmat = self.data.site_xmat[self._mdata.tcp_site_id].reshape(3, 3)
         # Object pose relative to the world frame
-        obj_pos = self._data.qpos[self._mdata.obj_qpos_adr : self._mdata.obj_qpos_adr + 3]
-        obj_quat = self._data.qpos[self._mdata.obj_qpos_adr + 3 : self._mdata.obj_qpos_adr + 7]
+        obj_pos = self.data.qpos[self._mdata.obj_qpos_adr : self._mdata.obj_qpos_adr + 3]
+        obj_quat = self.data.qpos[self._mdata.obj_qpos_adr + 3 : self._mdata.obj_qpos_adr + 7]
         obj_rmat = np.empty(9)
         mujoco.mju_quat2Mat(obj_rmat, obj_quat)
         obj_rmat = obj_rmat.reshape(3, 3)
@@ -238,14 +238,14 @@ class MujocoEdgeGraspEnv(MujocoBaseEnv):
         # TCP twist
         tcp_twist = np.empty(6)
         mujoco.mj_objectVelocity(
-            self._model, self._data, mujoco.mjtObj.mjOBJ_SITE, self._mdata.tcp_site_id, tcp_twist, 0
+            self.model, self.data, mujoco.mjtObj.mjOBJ_SITE, self._mdata.tcp_site_id, tcp_twist, 0
         )
         tcp_omega_world, tcp_vel = tcp_twist[:3], tcp_twist[3:]
         tcp_omega = tcp_rmat.T @ tcp_omega_world
         # Object twist
         adr = self._mdata.obj_qvel_adr
-        obj_vel = self._data.qvel[adr : adr + 3]
-        obj_omega = self._data.qvel[adr + 3 : adr + 6]
+        obj_vel = self.data.qvel[adr : adr + 3]
+        obj_omega = self.data.qvel[adr + 3 : adr + 6]
         # Object relative twist
         tcp_obj_vel = obj_vel - tcp_vel
         tcp_obj_omega = obj_omega - obj_rmat.T @ tcp_omega_world
@@ -254,8 +254,8 @@ class MujocoEdgeGraspEnv(MujocoBaseEnv):
     def _get_gripper_state(self) -> tuple[NDArray, NDArray]:
         """Get gripper finger positions and velocities."""
         qpos_adr, qvel_adr = self._mdata.gri_qpos_addr, self._mdata.gri_qvel_addr
-        gri_pos = self._data.qpos[qpos_adr : qpos_adr + self.GRIPPER_DOFS]
-        gri_vel = self._data.qvel[qvel_adr : qvel_adr + self.GRIPPER_DOFS]
+        gri_pos = self.data.qpos[qpos_adr : qpos_adr + self.GRIPPER_DOFS]
+        gri_vel = self.data.qvel[qvel_adr : qvel_adr + self.GRIPPER_DOFS]
         return gri_pos, gri_vel
 
     # region Rew Helpers
@@ -282,8 +282,8 @@ class MujocoEdgeGraspEnv(MujocoBaseEnv):
 
     def _get_contact_reward(self) -> float:
         """Get the gripper-object contact reward term."""
-        g1_type = self._model.geom_contype[self._data.contact.geom1[: self._data.ncon]]
-        g2_type = self._model.geom_contype[self._data.contact.geom2[: self._data.ncon]]
+        g1_type = self.model.geom_contype[self.data.contact.geom1[: self.data.ncon]]
+        g2_type = self.model.geom_contype[self.data.contact.geom2[: self.data.ncon]]
         gripper_object = ((g1_type == self.GRIPPER_CONTYPE) & (g2_type == self.OBJECT_CONTYPE)) | (
             (g1_type == self.OBJECT_CONTYPE) & (g2_type == self.GRIPPER_CONTYPE)
         )
@@ -291,15 +291,15 @@ class MujocoEdgeGraspEnv(MujocoBaseEnv):
 
     def _get_joint_reward(self) -> tuple[float, float]:
         """Get the robot joint velocity and force squared L2 reward terms."""
-        qvel = self._data.qvel[: self._mdata.gri_qvel_addr]
-        qfrc = self._data.qfrc_actuator[: self._mdata.gri_qvel_addr]
+        qvel = self.data.qvel[: self._mdata.gri_qvel_addr]
+        qfrc = self.data.qfrc_actuator[: self._mdata.gri_qvel_addr]
         qvel_l2_term = float(np.square(qvel).sum())
         qfrc_l2_term = float(np.square(qfrc).sum())
         return qvel_l2_term, qfrc_l2_term
 
     def _get_terminated(self, obj_height_raw: float) -> bool:
         """Get the terminated signal due to heavy robot/gripper collisions or object falling."""
-        con_frc = self._data.sensordata[self._mdata.con_snsr_adr : self._mdata.con_snsr_adr + 3]
+        con_frc = self.data.sensordata[self._mdata.con_snsr_adr : self._mdata.con_snsr_adr + 3]
         con_frc_norm = np.linalg.vector_norm(con_frc)
         con_frc_term = con_frc_norm > self._rcfg.col_tol
         obj_fall_term = obj_height_raw < -self._rcfg.fall_tol

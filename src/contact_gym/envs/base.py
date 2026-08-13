@@ -31,15 +31,15 @@ class MujocoBaseEnv(ABC, gym.Env):
         assert render_mode is None or render_mode in self.metadata["render_modes"], (
             f"Invalid rendering mode {render_mode}. Must be in {self.metadata['render_modes']}."
         )
-        self._model = spec.compile()
-        self._data = mujoco.MjData(self._model)
+        self.model = spec.compile()
+        self.data = mujoco.MjData(self.model)
         self._frame_skip = frame_skip
         self.render_mode = render_mode
         self._renderer = None
         self._home_key_id = self._set_home_key()
         # Setup action space
-        ctrl_low = self._model.actuator_ctrlrange[:, 0]
-        ctrl_high = self._model.actuator_ctrlrange[:, 1]
+        ctrl_low = self.model.actuator_ctrlrange[:, 0]
+        ctrl_high = self.model.actuator_ctrlrange[:, 1]
         self.action_space = spaces.Box(low=ctrl_low, high=ctrl_high, dtype=np.float32)
 
     # region Core API
@@ -48,40 +48,40 @@ class MujocoBaseEnv(ABC, gym.Env):
         self, seed: int | None = None, options: dict[str, Any] | None = None
     ) -> tuple[ObsType, InfoType]:
         super().reset(seed=seed, options=options)
-        mujoco.mj_resetDataKeyframe(self._model, self._data, self._home_key_id)
+        mujoco.mj_resetDataKeyframe(self.model, self.data, self._home_key_id)
         self._reset_data()
         self._apply_options(options)
-        mujoco.mj_forward(self._model, self._data)
+        mujoco.mj_forward(self.model, self.data)
         return self._get_obs(), self._get_info()
 
     def step(self, action: ActType) -> tuple[ObsType, float, bool, bool, InfoType]:
         # Apply action in environment
         action = np.clip(action, self.action_space.low, self.action_space.high)
-        self._data.ctrl[:] = action
+        self.data.ctrl[:] = action
         # Stepping logic follows the step2 -> step1 pattern used in dm_control for updated fields
         # https://github.com/google-deepmind/dm_control/blob/main/dm_control/mujoco/engine.py#L147
-        if self._model.opt.integrator != mujoco.mjtIntegrator.mjINT_RK4:
-            mujoco.mj_step2(self._model, self._data)
+        if self.model.opt.integrator != mujoco.mjtIntegrator.mjINT_RK4:
+            mujoco.mj_step2(self.model, self.data)
             if self._frame_skip > 1:
-                mujoco.mj_step(self._model, self._data, self._frame_skip - 1)
+                mujoco.mj_step(self.model, self.data, self._frame_skip - 1)
         else:
-            mujoco.mj_step(self._model, self._data, self._frame_skip)
-        mujoco.mj_step1(self._model, self._data)
+            mujoco.mj_step(self.model, self.data, self._frame_skip)
+        mujoco.mj_step1(self.model, self.data)
         obs = self._get_obs()
         reward, terminated = self._compute_reward(obs, action)
         return obs, reward, terminated, False, self._get_info()
 
     def render(self) -> RGBType:
         if self._renderer is None:
-            self._renderer = mujoco.Renderer(self._model, height=240, width=320)
-        self._renderer.update_scene(self._data)
+            self._renderer = mujoco.Renderer(self.model, height=240, width=320)
+        self._renderer.update_scene(self.data)
         return self._renderer.render()
 
     # region Helpers
 
     @abstractmethod
     def _reset_data(self) -> None:
-        """Apply any additional resets to self._data after `mujoco.mj_resetData`.
+        """Apply any additional resets to self.data after `mujoco.mj_resetData`.
 
         Called before `mujoco.mj_forward`.
         """
@@ -108,18 +108,18 @@ class MujocoBaseEnv(ABC, gym.Env):
 
     def _set_home_key(self) -> int:
         """Set the home keyframe for free objects in the scene."""
-        assert self._model.key("home") is not None, "Scene does not have a home key."
-        home_key_id = self._model.key("home").id
-        for jnt_id in range(self._model.njnt):
-            jnt_type = self._model.jnt_type[jnt_id]
+        assert self.model.key("home") is not None, "Scene does not have a home key."
+        home_key_id = self.model.key("home").id
+        for jnt_id in range(self.model.njnt):
+            jnt_type = self.model.jnt_type[jnt_id]
             if jnt_type != mujoco.mjtJoint.mjJNT_FREE:
                 continue
-            qpos_adr = self._model.jnt_qposadr[jnt_id]
-            qvel_adr = self._model.jnt_dofadr[jnt_id]
-            initial_qpos = self._data.qpos[qpos_adr : qpos_adr + 7].copy()
-            initial_qvel = self._data.qvel[qvel_adr : qvel_adr + 6].copy()
-            self._model.key_qpos[home_key_id, qpos_adr : qpos_adr + 7] = initial_qpos
-            self._model.key_qvel[home_key_id, qvel_adr : qvel_adr + 6] = initial_qvel
+            qpos_adr = self.model.jnt_qposadr[jnt_id]
+            qvel_adr = self.model.jnt_dofadr[jnt_id]
+            initial_qpos = self.data.qpos[qpos_adr : qpos_adr + 7].copy()
+            initial_qvel = self.data.qvel[qvel_adr : qvel_adr + 6].copy()
+            self.model.key_qpos[home_key_id, qpos_adr : qpos_adr + 7] = initial_qpos
+            self.model.key_qvel[home_key_id, qvel_adr : qvel_adr + 6] = initial_qvel
         return home_key_id
 
     def _apply_options(self, options: dict[str, Any] | None) -> None:
@@ -130,8 +130,8 @@ class MujocoBaseEnv(ABC, gym.Env):
         qvel = options.get("qvel")
         ctrl = options.get("ctrl")
         if qpos is not None:
-            self._data.qpos[:] = qpos
+            self.data.qpos[:] = qpos
         if qvel is not None:
-            self._data.qvel[:] = qvel
+            self.data.qvel[:] = qvel
         if ctrl is not None:
-            self._data.ctrl[:] = ctrl
+            self.data.ctrl[:] = ctrl
