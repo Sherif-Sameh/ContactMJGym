@@ -1,3 +1,5 @@
+import time
+
 import fire
 import gymnasium as gym
 import mujoco
@@ -17,6 +19,7 @@ def main(
     rand_act: bool = False,
     pert_scale: float = 3e-4,
     render_interval: int = 1,
+    max_fps: int = 60,
     max_steps: int | None = None,
     seed: int | None = None,
     kwargs: dict | None = None,
@@ -30,6 +33,7 @@ def main(
         pert_scale: Scale factor for random action perturbations. Default value is 3e-4.  
         render_interval: Number of env steps to skip between viewer sync calls.
             Default value is 1.
+        max_fps: Optional limit on the maximum FPS to run the simulation at. Default value is 60.
         max_steps: Optional limit on the total number of steps to run before exiting.
             If `None`, runs until the viewer window is closed. Default value is `None`.
         seed: Optional seed for the environment. Default value is `None`.
@@ -57,11 +61,13 @@ def main(
         env.action_space.seed(seed)
     env.reset(seed=seed)
     action = unwrapped.data.ctrl.copy()
+    frame_dt = 1 / max_fps
 
     step_count = 0
     with mujoco.viewer.launch_passive(
         unwrapped.model, unwrapped.data, show_right_ui=False
     ) as viewer:
+        next_frame = time.perf_counter()
         while viewer.is_running():
             if max_steps is not None and step_count >= max_steps:
                 break
@@ -74,6 +80,13 @@ def main(
                 env.reset(seed=seed)
                 action = unwrapped.data.ctrl.copy()
             step_count += 1
+            # Rate limit loop
+            next_frame += frame_dt
+            sleep_time = next_frame - time.perf_counter()
+            if sleep_time > 0:
+                time.sleep(sleep_time)
+            else:
+                next_frame = time.perf_counter()
     env.close()
 
 
