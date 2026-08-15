@@ -63,7 +63,7 @@ class MujocoEdgeGraspEnv(MujocoBaseEnv):
     GRIPPER_DOFS = 2
     GRIPPER_CONTYPE, OBJECT_CONTYPE = 2, 8
 
-    @dataclass(frozen=True)
+    @dataclass(frozen=True, slots=True)
     class ModelData:
         """MuJoCo model fixed attributes needed by the environment."""
 
@@ -83,7 +83,7 @@ class MujocoEdgeGraspEnv(MujocoBaseEnv):
                     continue
                 assert getattr(self, f.name) >= 0, f"{f.name} is invalid."
 
-    @dataclass
+    @dataclass(slots=True)
     class RewardTerms:
         """Individual reward terms computed by the environment."""
 
@@ -102,6 +102,7 @@ class MujocoEdgeGraspEnv(MujocoBaseEnv):
         frame_skip: int = 10,
         render_mode: str | None = None,
         rew_cfg: EdgeGraspRewardCfg | None = None,
+        debug_info: bool = False,
     ):
         spec = build_edge_grasp(robot=robot, object=object)
         super().__init__(spec, frame_skip=frame_skip, render_mode=render_mode)
@@ -113,6 +114,8 @@ class MujocoEdgeGraspEnv(MujocoBaseEnv):
         self.observation_space = spaces.Box(
             low=-np.inf, high=np.inf, shape=(nobs,), dtype=np.float32
         )
+        # Setup info dict
+        self._get_info_fn = self._get_debug_info if debug_info else (lambda: {})
 
     # region Env API
 
@@ -153,7 +156,7 @@ class MujocoEdgeGraspEnv(MujocoBaseEnv):
 
     def _get_info(self) -> InfoType:
         """Get the latest info dict."""
-        return self._rterms.__dict__.copy()
+        return self._get_info_fn()
 
     def _compute_reward(self, obs: ObsType, _: ActType) -> tuple[float, bool]:
         """Compute the reward and termination signal.
@@ -208,6 +211,10 @@ class MujocoEdgeGraspEnv(MujocoBaseEnv):
             tabletop_height=float(tabletop_pos[2] + tabletop_size[2]),
             tabletop_extent=float(max(tabletop_size[:2])),
         )
+
+    def _get_debug_info(self) -> InfoType:
+        """Return the dict of individual reward terms to values."""
+        return {f.name: getattr(self._rterms, f.name) for f in fields(self._rterms)}
 
     # region Obs Helpers
 
@@ -309,7 +316,7 @@ class MujocoEdgeGraspEnv(MujocoBaseEnv):
 # region RewardCfg
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class EdgeGraspRewardCfg:
     """Reward function configuration for the EdgeGrasp environment."""
 
@@ -334,7 +341,7 @@ class EdgeGraspRewardCfg:
     height_mult: float = 2.0
     """Multiplier for object height before applying tanh() for reward term. Default value is 2."""
 
-    @dataclass(frozen=True)
+    @dataclass(frozen=True, slots=True)
     class Weights:
         """Weights for the individual reward terms."""
 
