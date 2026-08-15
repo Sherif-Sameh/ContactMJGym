@@ -97,9 +97,26 @@ def filter_actuators(
         (lambda _: True) if ctrlnum is None else (lambda actuator: actuator.ctrlnum == ctrlnum),
         (lambda _: True) if group is None else (lambda actuator: actuator.group == group),
     )
-    jnt_ids = [
+    act_ids = [
         i
         for i in range(model.nactuator)
         if all(fltr(model.actuator(i)) == flag for fltr, flag in zip(filters, flags))
     ]
-    return jnt_ids
+    return act_ids
+
+
+def disable_actuators(model: mujoco.MjModel, actuator_ids: list[int]) -> None:
+    """Moves all selected actuators to a common free group then disables that group.
+
+    Args:
+        model: MuJoCo model to update.
+        actuator_ids: IDs of all actuators that should be disabled.
+    """
+    # Find a free actuator group to disable
+    free_group = 0
+    active_groups = set(model.actuator_group)
+    while free_group in active_groups:
+        free_group += 1
+    # Move all actuators to the new empty group and disable it
+    model.actuator_group[actuator_ids] = free_group
+    model.opt.disableactuator |= 1 << free_group

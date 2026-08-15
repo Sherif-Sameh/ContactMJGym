@@ -9,7 +9,7 @@ from gymnasium import spaces
 from gymnasium.wrappers.utils import rescale_box
 
 from ..envs.base import MujocoBaseEnv
-from ..utils.mj_utils import filter_actuators
+from ..utils.mj_utils import disable_actuators, filter_actuators
 
 if TYPE_CHECKING:
     from numpy.typing import NDArray
@@ -24,10 +24,12 @@ class MocapControllerAction(gym.ActionWrapper):
 
     Exposes end-effector control through mocap bodies welded to gripper sites, following the
     approach used by Gymnasium-Robotics' Fetch environments. At initialization, this wrapper
-    disables all of the robot(s)' actuators (gripper actuators are left untouched) and enables
-    the weld equality constraints between each mocap body's site and its corresponding gripper
-    site. The wrapper supports any number of robots/grippers present in the model, each
-    controlled through its own mocap-weld pair.
+    enables the weld equality constraints between each mocap body's site and its corresponding
+    gripper site. If a `home` key exists, the default robot joint ctrl is adopted and joint
+    controllers are retained to regulate the robot towards its home configuration in the
+    presence of redundancies. Otherwise, the robot(s)' actuators are disabled, relying only
+    on equality constraints for control. The wrapper supports any number of robots/grippers
+    present in the model, each controlled through its own mocap-weld pair.
 
     Each action specifies, per gripper, a delta pose relative to the gripper
     site's *current* pose:
@@ -60,8 +62,6 @@ class MocapControllerAction(gym.ActionWrapper):
             is an empty dict.
     """
 
-    ROBOT_ACTUATOR_GROUP = 1
-
     def __init__(
         self,
         env: MujocoBaseEnv,
@@ -81,15 +81,19 @@ class MocapControllerAction(gym.ActionWrapper):
         assert self.env.unwrapped.model.nmocap > 0
         self.data = self.env.unwrapped.data
         self.nmocap = self.env.unwrapped.model.nmocap
-        self.action_buffer = np.zeros(
-            self.env.action_space.shape[0], dtype=self.env.action_space.dtype
-        )
-
         self._gri_idxs = tuple(
             self._get_gripper_indices(self.env.unwrapped.model, fltr_acts_kwargs)
         )
         assert self._gri_idxs, "No gripper actuators. Wrapper assumes at least a single gripper."
-        self._disable_robot_actuators(self.env.unwrapped.model, self._gri_idxs)
+        # Setup action buffer
+        home = self.env.unwrapped.model.key("home")
+        self.action_buffer = (
+            np.zeros(self.env.unwrapped.model.nu) if home is None else home.ctrl.copy()
+        ).astype(dtype=self.env.action_space.dtype)
+        if home is None:  # cannot reliably drive actuators
+            nactuator = self.env.unwrapped.model.nactuator
+            robot_idxs = [i for i in range(nactuator) if i not in self._gri_idxs]
+            disable_actuators(self.env.unwrapped.model, robot_idxs)
         self._gri_idxs = (
             slice(self._gri_idxs[0], self._gri_idxs[0] + 1)
             if len(self._gri_idxs) == 1
@@ -131,19 +135,6 @@ class MocapControllerAction(gym.ActionWrapper):
             return filter_actuators(model, **fltr_kwargs)
         # Fall back to simple trntype heuristic
         return filter_actuators(model, trntype=mujoco.mjtTrn.mjTRN_TENDON)
-
-    @classmethod
-    def _disable_robot_actuators(cls, model: mujoco.MjModel, gripper_indices: list[int]) -> None:
-        """Move all robot actuators to a free group then disable the actuator group."""
-        # Find a free actuator group to disable
-        active_groups = set(model.actuator_group)
-        while cls.ROBOT_ACTUATOR_GROUP in active_groups:
-            cls.ROBOT_ACTUATOR_GROUP += 1
-        # Move all robot actuators to the new empty group
-        robot_act_ids = [i for i in range(model.nactuator) if i not in gripper_indices]
-        model.actuator_group[robot_act_ids] = cls.ROBOT_ACTUATOR_GROUP
-        # Disable group
-        model.opt.disableactuator |= 1 << cls.ROBOT_ACTUATOR_GROUP
 
     def _get_unscaled_action_space(self, max_tstep: float, max_rstep: float) -> spaces.Box:
         """Get unscaled robot (task-space) + gripper (unchanged) box action space."""
