@@ -2,64 +2,51 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, Callable
 
-import gymnasium as gym
 import mujoco
 import numpy as np
-from gymnasium import spaces
-from gymnasium.wrappers.utils import rescale_box
 
-from ..envs.base import MujocoBaseEnv
-from ..utils.mj_utils import disable_actuators, filter_actuators
+from ..utils.mj_utils import disable_actuators
+from .task_space import TaskSpaceControllerAction
 
 if TYPE_CHECKING:
-    from numpy.typing import NDArray
-
-    from ..envs.base import ActType
-
-    WrapperActType = ActType
+    from ..envs.base import ActType, MujocoBaseEnv
+    from .task_space import WrapperActType
 
 
-class MocapControllerAction(gym.ActionWrapper):
-    """Task-space action wrapper for MuJoCo manipulation environments.
+class MocapControllerAction(TaskSpaceControllerAction):
+    """Mocap task-space action wrapper for MuJoCo manipulation environments.
 
-    Exposes end-effector control through mocap bodies welded to gripper sites, following the
-    approach used by Gymnasium-Robotics' Fetch environments. At initialization, this wrapper
-    enables the weld equality constraints between each mocap body's site and its corresponding
-    gripper site. If a `home` key exists, the default robot joint ctrl is adopted and joint
-    controllers are retained to regulate the robot towards its home configuration in the
-    presence of redundancies. Otherwise, the robot(s)' actuators are disabled, relying only
-    on equality constraints for control. The wrapper supports any number of robots/grippers
-    present in the model, each controlled through its own mocap-weld pair.
-
-    Each action specifies, per gripper, a delta pose relative to the gripper
-    site's *current* pose:
-    - A delta position offset, expressed in the world frame
-    - A delta rotation, expressed as a rotation vector in the tangent space of the site's
-        current orientation.
+    Exposes end-effector control through mocap bodies welded to end-effector sites, following
+    the approach used by Gymnasium-Robotics' Fetch environments. At initialization, this
+    wrapper enables the weld equality constraints between each mocap body's site and its
+    corresponding end-effector site. If a `home` key exists, the default robot joint ctrl is
+    adopted and joint controllers are retained to regulate the robot towards its home
+    configuration in the presence of redundancies. Otherwise, the robot(s)' actuators are
+    disabled, relying only on equality constraints for control. The wrapper supports any
+    number of robots/grippers present in the model, each controlled through its own
+    mocap-weld pair.
 
     Before applying an action, the mocap body is reset to coincide with its welded site's current
     pose, and the requested offset is then added on top to obtain the new mocap target. Translation
     and rotation offsets are each clipped to a maximum step size.
 
-    Actions are expected in a normalized [-1, 1] range and are internally unscaled before being
-    converted into world-frame pose targets and applied to the underlying environment.
+    For action convention, see :class:`TaskSpaceControllerAction`.
 
     **Note**: this wrapper assumes weld equality constraints are defined between
     *sites* (mocap site <-> gripper site), not bodies, and that *no other* action wrappers
     have been already applied to the environment.
 
     Args:
-        env: The MuJoCo-based manipulation environment to wrap. Must define
-            at least one gripper, with mocap bodies welded to sites via
-            site-to-site equality constraints.
+        env: The MuJoCo-based manipulation environment to wrap. Must define mocap bodies
+            welded to sites via site-to-site equality constraints.
         max_tstep: Maximum translation step size (Euclidean norm, in meters)
             applied per action. Default value is 0.05.
         max_rstep: Maximum rotation step size (norm of the rotation vector,
             in radians) applied per action. Defaults value is 0.05 * pi.
         fltr_acts_kwargs: Kwargs for filtering for gripper actuators. For details, see
-            :func:`filter_actuators`. If empty, we rely on a simple heuristic by filtering
-            for actuators whose `trntype` is `mujoco.mjtTrn.mjTRN_TENDON`. Default value
-            is an empty dict.
+            :func:`~..utils.mj_utils.filter_actuators`. If empty, we rely on a simple
+            heuristic by filtering for actuators whose `trntype` is
+            `mujoco.mjtTrn.mjTRN_TENDON`. Default value is an empty dict.
     """
 
     def __init__(
@@ -69,45 +56,22 @@ class MocapControllerAction(gym.ActionWrapper):
         max_rstep: float = 0.05 * np.pi,
         fltr_acts_kwargs: dict[str, Any] = {},
     ):
-        super().__init__(env)
-        assert isinstance(env.unwrapped, MujocoBaseEnv), (
-            f"Unsupported env type {env.unwrapped.__class__.__name__}. "
-            f"Must be a subclass of {MujocoBaseEnv.__name__}."
-        )
-        assert self.env.unwrapped.model.nu == self.env.unwrapped.model.nactuator, (
-            "Wrapper assumes all actuators are SISO."
-        )
-        assert self.env.unwrapped.model.nu == env.action_space.shape[0]
+        nrobot = 1 if not hasattr(env.unwrapped, "model") else env.unwrapped.model.nmocap
+        super().__init__(env, nrobot, max_tstep, max_rstep, fltr_acts_kwargs)
         assert self.env.unwrapped.model.nmocap > 0
         self.data = self.env.unwrapped.data
-        self.nmocap = self.env.unwrapped.model.nmocap
-        self._gri_idxs = tuple(
-            self._get_gripper_indices(self.env.unwrapped.model, fltr_acts_kwargs)
-        )
-        assert self._gri_idxs, "No gripper actuators. Wrapper assumes at least a single gripper."
-        # Setup action buffer
-        home = self.env.unwrapped.model.key("home")
-        self.action_buffer = (
-            np.zeros(self.env.unwrapped.model.nu) if home is None else home.ctrl.copy()
-        ).astype(dtype=self.env.action_space.dtype)
-        if home is None:  # cannot reliably drive actuators
-            nactuator = self.env.unwrapped.model.nactuator
-            robot_idxs = [i for i in range(nactuator) if i not in self._gri_idxs]
-            disable_actuators(self.env.unwrapped.model, robot_idxs)
-        self._gri_idxs = (
-            slice(self._gri_idxs[0], self._gri_idxs[0] + 1)
-            if len(self._gri_idxs) == 1
-            else self._gri_idxs
-        )
-        # Setup action space
-        action_space_unscaled = self._get_unscaled_action_space(max_tstep, max_rstep)
-        self.action_space, _, self._func = rescale_box(action_space_unscaled, new_min=-1, new_max=1)
         # Enable mocap weld constraints and get mocap -> site id mapping
         mocap_siteid = self._setup_mocap_bodies(self.env.unwrapped.model)
+        # Disable actuators if no home key exists
+        if self.env.unwrapped.model.key("home") is None:
+            nactuator = self.env.unwrapped.model.nactuator
+            gri_idxs = self._get_gripper_indices(self.env.unwrapped.model, fltr_acts_kwargs)
+            robot_idxs = [i for i in range(nactuator) if i not in gri_idxs]
+            disable_actuators(self.env.unwrapped.model, robot_idxs)
         # Build action function for mocap bodies
-        self._mocap_action = self._build_mocap_action(mocap_siteid, max_tstep, max_rstep)
+        self.mocap_action = self._build_mocap_action(mocap_siteid, max_tstep, max_rstep)
 
-    def action(self, action: ActType) -> WrapperActType:
+    def action(self, action: WrapperActType) -> ActType:
         """Returns a modified action before :meth:`step` is called.
 
         Args:
@@ -116,36 +80,12 @@ class MocapControllerAction(gym.ActionWrapper):
         Returns:
             The modified actions
         """
-        # Unscale actions
-        action = self._func(action)
-        # Extract and apply mocap actions to mocap bodies
-        action_mocap = action[: 6 * self.nmocap].reshape(self.nmocap, 6)
-        self._mocap_action(action_mocap)
-        # Write gripper actions into action buffer
-        action_gri = action[6 * self.nmocap :]
-        self.action_buffer[self._gri_idxs] = action_gri
+        action = self.unscale_action(action)
+        self.mocap_action(action)
+        self.gripper_action(action)
         return self.action_buffer
 
     # region Helpers
-
-    @staticmethod
-    def _get_gripper_indices(model: mujoco.MjModel, fltr_kwargs: dict[str, Any]) -> list[int]:
-        """Get the indices that correspond to gripper actuators in ctrl."""
-        if fltr_kwargs:  # rely on user filters
-            return filter_actuators(model, **fltr_kwargs)
-        # Fall back to simple trntype heuristic
-        return filter_actuators(model, trntype=mujoco.mjtTrn.mjTRN_TENDON)
-
-    def _get_unscaled_action_space(self, max_tstep: float, max_rstep: float) -> spaces.Box:
-        """Get unscaled robot (task-space) + gripper (unchanged) box action space."""
-        dtype = self.env.action_space.dtype
-        low_gri = self.env.action_space.low[self._gri_idxs]
-        high_gri = self.env.action_space.high[self._gri_idxs]
-        low_mocap = np.array(([-max_tstep] * 3 + [-max_rstep] * 3) * self.nmocap, dtype=dtype)
-        high_mocap = np.array(([max_tstep] * 3 + [max_rstep] * 3) * self.nmocap, dtype=dtype)
-        low_new = np.concatenate([low_mocap, low_gri])
-        high_new = np.concatenate([high_mocap, high_gri])
-        return spaces.Box(low=low_new, high=high_new)
 
     def _setup_mocap_bodies(self, model: mujoco.MjModel) -> list[int]:
         """Enable weld constraints involving mocap bodies and return mocap -> site id map."""
@@ -179,14 +119,14 @@ class MocapControllerAction(gym.ActionWrapper):
 
     def _build_mocap_action(
         self, mocap_siteid: list[int], max_tstep: float, max_rstep: float
-    ) -> Callable[[NDArray], None]:
-        """Build the mocap action function to update the mocaps poses given the current action."""
+    ) -> Callable[[WrapperActType], None]:
+        """Build the mocap action function to update mocap poses given the current action."""
         nmocap = len(mocap_siteid)
         limits = np.array([max_tstep, max_rstep]).reshape(1, 2)
 
-        def mocap_action(action: NDArray) -> None:
+        def mocap_action(action: WrapperActType) -> None:
+            action = action[: 6 * nmocap].reshape(nmocap, 2, 3)
             # Limit the action norms
-            action = action.reshape(nmocap, 2, 3)
             step = np.sqrt(np.sum(action * action, axis=2)) + 1e-12
             action *= np.minimum(1.0, limits / step)[:, :, None]
             # Add pose offsets to site poses
