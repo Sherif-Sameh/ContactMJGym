@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Callable
+from typing import TYPE_CHECKING, Any, Callable
 
 import gymnasium as gym
 import mujoco
@@ -9,6 +9,7 @@ from gymnasium import spaces
 from gymnasium.wrappers.utils import rescale_box
 
 from ..envs.base import MujocoBaseEnv
+from ..utils.mj_utils import filter_actuators
 
 if TYPE_CHECKING:
     from numpy.typing import NDArray
@@ -42,7 +43,8 @@ class MocapControllerAction(gym.ActionWrapper):
     converted into world-frame pose targets and applied to the underlying environment.
 
     **Note**: this wrapper assumes weld equality constraints are defined between
-    *sites* (mocap site <-> gripper site), not bodies.
+    *sites* (mocap site <-> gripper site), not bodies, and that *no other* action wrappers
+    have been already applied to the environment.
 
     Args:
         env: The MuJoCo-based manipulation environment to wrap. Must define
@@ -51,16 +53,24 @@ class MocapControllerAction(gym.ActionWrapper):
         max_tstep: Maximum translation step size (Euclidean norm, in meters)
             applied per action. Default value is 0.05.
         max_rstep: Maximum rotation step size (norm of the rotation vector,
-            in radians) applied per action. Defaults to 0.05 * pi.
+            in radians) applied per action. Defaults value is 0.05 * pi.
+        fltr_acts_kwargs: Kwargs for filtering for gripper actuators. For details, see
+            :func:`filter_actuators`. If empty, we rely on a simple heuristic by filtering
+            for actuators whose `trntype` is `mujoco.mjtTrn.mjTRN_TENDON`. Default value
+            is an empty dict.
     """
 
     ROBOT_ACTUATOR_GROUP = 1
 
     def __init__(
-        self, env: MujocoBaseEnv, max_tstep: float = 0.05, max_rstep: float = 0.05 * np.pi
+        self,
+        env: MujocoBaseEnv,
+        max_tstep: float = 0.05,
+        max_rstep: float = 0.05 * np.pi,
+        fltr_acts_kwargs: dict[str, Any] = {},
     ):
         super().__init__(env)
-        assert issubclass(env.unwrapped.__class__, MujocoBaseEnv), (
+        assert isinstance(env.unwrapped, MujocoBaseEnv), (
             f"Unsupported env type {env.unwrapped.__class__.__name__}. "
             f"Must be a subclass of {MujocoBaseEnv.__name__}."
         )
@@ -74,13 +84,17 @@ class MocapControllerAction(gym.ActionWrapper):
         self.action_buffer = np.zeros(
             self.env.action_space.shape[0], dtype=self.env.action_space.dtype
         )
-        self._gri_idxs = tuple(self._get_gripper_indices(self.env.unwrapped.model))
+
+        self._gri_idxs = tuple(
+            self._get_gripper_indices(self.env.unwrapped.model, fltr_acts_kwargs)
+        )
+        assert self._gri_idxs, "No gripper actuators. Wrapper assumes at least a single gripper."
+        self._disable_robot_actuators(self.env.unwrapped.model, self._gri_idxs)
         self._gri_idxs = (
             slice(self._gri_idxs[0], self._gri_idxs[0] + 1)
             if len(self._gri_idxs) == 1
             else self._gri_idxs
         )
-        self._disable_robot_actuators(self.env.unwrapped.model)
         # Setup action space
         action_space_unscaled = self._get_unscaled_action_space(max_tstep, max_rstep)
         self.action_space, _, self._func = rescale_box(action_space_unscaled, new_min=-1, new_max=1)
@@ -111,31 +125,22 @@ class MocapControllerAction(gym.ActionWrapper):
     # region Helpers
 
     @staticmethod
-    def _get_gripper_indices(model: mujoco.MjModel) -> list[int]:
+    def _get_gripper_indices(model: mujoco.MjModel, fltr_kwargs: dict[str, Any]) -> list[int]:
         """Get the indices that correspond to gripper actuators in ctrl."""
-        # TODO: Find a more robust way of evaluating robot vs gripper actuators
-        gripper_indices = [
-            i
-            for i in range(model.nactuator)
-            if model.actuator_trntype[i] == mujoco.mjtTrn.mjTRN_TENDON
-        ]
-        assert gripper_indices, "No gripper actuators. Wrapper assumes every robot has a gripper."
-        return gripper_indices
+        if fltr_kwargs:  # rely on user filters
+            return filter_actuators(model, **fltr_kwargs)
+        # Fall back to simple trntype heuristic
+        return filter_actuators(model, trntype=mujoco.mjtTrn.mjTRN_TENDON)
 
     @classmethod
-    def _disable_robot_actuators(cls, model: mujoco.MjModel) -> None:
+    def _disable_robot_actuators(cls, model: mujoco.MjModel, gripper_indices: list[int]) -> None:
         """Move all robot actuators to a free group then disable the actuator group."""
         # Find a free actuator group to disable
         active_groups = set(model.actuator_group)
         while cls.ROBOT_ACTUATOR_GROUP in active_groups:
             cls.ROBOT_ACTUATOR_GROUP += 1
         # Move all robot actuators to the new empty group
-        # TODO: Find a more robust way of evaluating robot vs gripper actuators
-        robot_act_ids = [
-            i
-            for i in range(model.nactuator)
-            if model.actuator_trntype[i] != mujoco.mjtTrn.mjTRN_TENDON
-        ]
+        robot_act_ids = [i for i in range(model.nactuator) if i not in gripper_indices]
         model.actuator_group[robot_act_ids] = cls.ROBOT_ACTUATOR_GROUP
         # Disable group
         model.opt.disableactuator |= 1 << cls.ROBOT_ACTUATOR_GROUP
