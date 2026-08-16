@@ -9,7 +9,7 @@ from ..utils.mj_utils import disable_actuators
 from .task_space import TaskSpaceControllerAction
 
 if TYPE_CHECKING:
-    from ..envs.base import ActType, MujocoBaseEnv
+    from ..envs.base import ActType, InfoType, MujocoBaseEnv, ObsType
     from .task_space import WrapperActType
 
 
@@ -19,16 +19,11 @@ class MocapControllerAction(TaskSpaceControllerAction):
     Exposes end-effector control through mocap bodies welded to end-effector sites, following
     the approach used by Gymnasium-Robotics' Fetch environments. At initialization, this
     wrapper enables the weld equality constraints between each mocap body's site and its
-    corresponding end-effector site. If a `home` key exists, the default robot joint ctrl is
-    adopted and joint controllers are retained to regulate the robot towards its home
-    configuration in the presence of redundancies. Otherwise, the robot(s)' actuators are
-    disabled, relying only on equality constraints for control. The wrapper supports any
-    number of robots/grippers present in the model, each controlled through its own
-    mocap-weld pair.
-
-    Before applying an action, the mocap body is reset to coincide with its welded site's current
-    pose, and the requested offset is then added on top to obtain the new mocap target. Translation
-    and rotation offsets are each clipped to a maximum step size.
+    corresponding end-effector site. Optionally, the robot(s)' joint controllers can be
+    retained to regulate it towards its initial configuration, which is updated at every
+    environment reset. Otherwise, the robot(s)' actuators are disabled, relying only on
+    equality constraints for control. The wrapper supports any number of robots/grippers
+    present in the model, each controlled through its own mocap-weld pair.
 
     For action convention, see :class:`TaskSpaceControllerAction`.
 
@@ -47,6 +42,8 @@ class MocapControllerAction(TaskSpaceControllerAction):
             :func:`~..utils.mj_utils.filter_actuators`. If empty, we rely on a simple
             heuristic by filtering for actuators whose `trntype` is
             `mujoco.mjtTrn.mjTRN_TENDON`. Default value is an empty dict.
+        disable_acts: If True, the robot(s)' actuators are disabled (gripper actuators are
+            unaffected). Default value is False.
     """
 
     def __init__(
@@ -55,21 +52,37 @@ class MocapControllerAction(TaskSpaceControllerAction):
         max_tstep: float = 0.05,
         max_rstep: float = 0.05 * np.pi,
         fltr_acts_kwargs: dict[str, Any] = {},
+        disable_acts: bool = False,
     ):
         nrobot = 1 if not hasattr(env.unwrapped, "model") else env.unwrapped.model.nmocap
         super().__init__(env, nrobot, max_tstep, max_rstep, fltr_acts_kwargs)
         assert self.env.unwrapped.model.nmocap > 0
         self.data = self.env.unwrapped.data
         # Enable mocap weld constraints and get mocap -> site id mapping
-        mocap_siteid = self._setup_mocap_bodies(self.env.unwrapped.model)
-        # Disable actuators if no home key exists
-        if self.env.unwrapped.model.key("home") is None:
+        self._mocap_siteid = self._setup_mocap_bodies(self.env.unwrapped.model)
+        # Disable actuators if requested
+        if disable_acts:
             nactuator = self.env.unwrapped.model.nactuator
             gri_idxs = self._get_gripper_indices(self.env.unwrapped.model, fltr_acts_kwargs)
             robot_idxs = [i for i in range(nactuator) if i not in gri_idxs]
             disable_actuators(self.env.unwrapped.model, robot_idxs)
         # Build action function for mocap bodies
-        self.mocap_action = self._build_mocap_action(mocap_siteid, max_tstep, max_rstep)
+        self.mocap_action = self._build_mocap_action(max_tstep, max_rstep)
+
+    def reset(
+        self, *, seed: int | None = None, options: dict[str, Any] | None = None
+    ) -> tuple[ObsType, InfoType]:
+        """Resets the environment to an initial internal state, returning an initial observation and info."""
+        obs, info = super().reset(seed=seed, options=options)
+        # Reset mocap bodies to corresponding sites
+        site_xpos = self.data.site_xpos.take(self._mocap_siteid, axis=0)
+        site_xmat = self.data.site_xmat.take(self._mocap_siteid, axis=0)
+        self.data.mocap_pos[:] = site_xpos
+        for quat, xmat in zip(self.data.mocap_quat, site_xmat):
+            mujoco.mju_mat2Quat(quat, xmat)
+        # Reset action buffer
+        self.action_buffer[:] = self.data.ctrl
+        return obs, info
 
     def action(self, action: WrapperActType) -> ActType:
         """Returns a modified action before :meth:`step` is called.
@@ -118,10 +131,10 @@ class MocapControllerAction(TaskSpaceControllerAction):
         return mocap_siteid
 
     def _build_mocap_action(
-        self, mocap_siteid: list[int], max_tstep: float, max_rstep: float
+        self, max_tstep: float, max_rstep: float
     ) -> Callable[[WrapperActType], None]:
         """Build the mocap action function to update mocap poses given the current action."""
-        nmocap = len(mocap_siteid)
+        nmocap = len(self._mocap_siteid)
         limits = np.array([max_tstep, max_rstep]).reshape(1, 2)
 
         def mocap_action(action: WrapperActType) -> None:
@@ -129,13 +142,10 @@ class MocapControllerAction(TaskSpaceControllerAction):
             # Limit the action norms
             step = np.sqrt(np.sum(action * action, axis=2)) + 1e-12
             action *= np.minimum(1.0, limits / step)[:, :, None]
-            # Add pose offsets to site poses
-            site_xpos = self.data.site_xpos.take(mocap_siteid, axis=0)
-            site_xmat = self.data.site_xmat.take(mocap_siteid, axis=0)
-            self.data.mocap_pos[:] = site_xpos + action[:, 0]
+            # Add pose offsets to mocap poses in place
+            self.data.mocap_pos += action[:, 0]
             quat = self.data.mocap_quat
             for i in range(nmocap):
-                mujoco.mju_mat2Quat(quat[i], site_xmat[i])
                 mujoco.mju_quatIntegrate(quat[i], action[i, 1], 1.0)
 
         return mocap_action

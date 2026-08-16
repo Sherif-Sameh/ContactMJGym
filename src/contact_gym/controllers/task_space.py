@@ -66,15 +66,14 @@ class TaskSpaceControllerAction(ABC, gym.ActionWrapper):
         )
         assert self.env.unwrapped.model.nu == env.action_space.shape[0]
         self.data = self.env.unwrapped.data
+        # Setup action buffer
+        self.action_buffer = np.zeros(
+            self.env.unwrapped.model.nu, dtype=self.env.action_space.dtype
+        )
         # Find gripper actuator ids
         gri_idxs = self._get_gripper_indices(self.env.unwrapped.model, fltr_acts_kwargs)
         if len(gri_idxs) == 1:
             gri_idxs = slice(gri_idxs[0], gri_idxs[0] + 1)
-        # Setup action buffer
-        home = self.env.unwrapped.model.key("home")
-        self.action_buffer = (
-            np.zeros(self.env.unwrapped.model.nu) if home is None else home.ctrl.copy()
-        ).astype(dtype=self.env.action_space.dtype)
         # Setup action space
         action_space_unscaled = self._get_unscaled_action_space(
             nrobot, max_tstep, max_rstep, gri_idxs
