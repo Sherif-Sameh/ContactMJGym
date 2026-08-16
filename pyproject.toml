@@ -27,10 +27,13 @@ markers = ["unit"]
 
 [tool.pixi.environments]
 test = ["test"]
+mink = ["mink"]
 
-# Setup environment for testing
 [tool.pixi.feature.test.pypi-dependencies]
 pytest = ">=8.4"
+
+[tool.pixi.feature.mink.pypi-dependencies]
+mink = ">=1.1.0"
 
 [tool.ruff]
 # Exclude a variety of commonly ignored directories.
