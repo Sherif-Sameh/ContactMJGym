@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, fields
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import mujoco
 import numpy as np
@@ -58,6 +58,17 @@ class MujocoEdgeGraspEnv(MujocoBaseEnv):
        episode.
 
     Joint-based terms (5, 6) apply to the robot arm joints only, excluding the gripper.
+
+    Args:
+        robot: Choice of robot manipulator for environment. Default is panda.
+        object: Choice of object to grasp for environment. Default is block.
+        frame_skip: Number of sim steps per env step. Default value is 10.
+        render_mode: Environment rendering mode. Default value is None.
+        renderer_kwargs: Optional kwargs to pass to :class:`mujoco.Renderer` for rendering.
+        rew_cfg: Reward function configuration. Determines thresholds, multipliers and reward
+            weights. If None, default values are used. Default value is None.
+        debug_info: If True, the info dict contains the raw values of each reward term. Otherwise,
+            an empty dict is returned for info. Default value is False.
     """
 
     GRIPPER_DOFS = 2
@@ -101,6 +112,7 @@ class MujocoEdgeGraspEnv(MujocoBaseEnv):
         object: str = "block",
         frame_skip: int = 10,
         render_mode: str | None = None,
+        renderer_kwargs: dict[str, Any] = {},
         rew_cfg: EdgeGraspRewardCfg | None = None,
         debug_info: bool = False,
     ):
@@ -114,7 +126,7 @@ class MujocoEdgeGraspEnv(MujocoBaseEnv):
         self.observation_space = spaces.Box(
             low=-np.inf, high=np.inf, shape=(nobs,), dtype=np.float32
         )
-        # Setup info dict
+        # Setup info function
         self._get_info_fn = self._get_debug_info if debug_info else (lambda: {})
 
     # region Env API
@@ -271,15 +283,16 @@ class MujocoEdgeGraspEnv(MujocoBaseEnv):
         self, obj_pos: NDArray, tabletop_pos: NDArray, obj_height_raw: float
     ) -> float:
         """Get the object's planar distance from table center reward term."""
-        if obj_height_raw >= self._rcfg.lift_tol:
+        if obj_height_raw > self._rcfg.lift_tol:
             return 0.0
-        obj_dist = np.linalg.vector_norm(obj_pos[:2] - tabletop_pos[:2])
+        tt_obj_pos_xy = obj_pos[:2] - tabletop_pos[:2]
+        obj_dist = np.sqrt(np.sum(tt_obj_pos_xy * tt_obj_pos_xy))
         obj_dist /= self._mdata.tabletop_extent
         return float(np.tanh(self._rcfg.dist_mult * obj_dist) - 1)
 
     def _get_tcp_dist_reward(self, tcp_obj_pos: NDArray) -> float:
         """Get the TCP-object distance reward term."""
-        tcp_dist = np.linalg.vector_norm(tcp_obj_pos)
+        tcp_dist = np.sqrt(np.sum(tcp_obj_pos * tcp_obj_pos))
         return float(np.tanh(tcp_dist))
 
     def _get_height_reward(self, obj_height_raw: float) -> float:
@@ -300,14 +313,14 @@ class MujocoEdgeGraspEnv(MujocoBaseEnv):
         """Get the robot joint velocity and force squared L2 reward terms."""
         qvel = self.data.qvel[: self._mdata.gri_qvel_adr]
         qfrc = self.data.qfrc_actuator[: self._mdata.gri_qvel_adr]
-        qvel_l2_term = float(np.square(qvel).sum())
-        qfrc_l2_term = float(np.square(qfrc).sum())
+        qvel_l2_term = float((qvel * qvel).sum())
+        qfrc_l2_term = float((qfrc * qfrc).sum())
         return qvel_l2_term, qfrc_l2_term
 
     def _get_terminated(self, obj_height_raw: float) -> bool:
         """Get the terminated signal due to heavy robot/gripper collisions or object falling."""
         con_frc = self.data.sensordata[self._mdata.con_snsr_adr : self._mdata.con_snsr_adr + 3]
-        con_frc_norm = np.linalg.vector_norm(con_frc)
+        con_frc_norm = np.sqrt(np.sum(con_frc * con_frc))
         con_frc_term = con_frc_norm > self._rcfg.col_tol
         obj_fall_term = obj_height_raw < -self._rcfg.fall_tol
         return bool(con_frc_term or obj_fall_term)

@@ -1,8 +1,8 @@
 """Registry for environments."""
 
-from .edge_grasp import MujocoEdgeGraspEnv
+from .edge_grasp import EdgeGraspRewardCfg, MujocoEdgeGraspEnv
 
 # Supported environments
 ALL_ENVS = (MujocoEdgeGraspEnv,)
 
-__all__ = ["MujocoEdgeGraspEnv"]
+__all__ = ["EdgeGraspRewardCfg", "MujocoEdgeGraspEnv"]
