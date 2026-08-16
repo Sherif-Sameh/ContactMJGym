@@ -22,11 +22,23 @@ class MujocoBaseEnv(ABC, gym.Env):
     Defines common environment `action_space`, `reset`, `step` and `render` logic. Extending
     classes must provide `observation_space`, `_reset_data`, `_get_obs`, `_get_info` and
     `_compute_reward` logic.
+
+    Args:
+        spec: MuJoCo scene spec (MjSpec) to build model from.
+        frame_skip: Number of sim steps per env step. Default value is 10.
+        render_mode: Environment rendering mode. Default value is None.
+        renderer_kwargs: Optional kwargs to pass to :class:`mujoco.Renderer` for rendering.
     """
 
     metadata = {"render_modes": ["rgb_array"]}  # noqa: RUF012
 
-    def __init__(self, spec: mujoco.MjSpec, frame_skip: int = 10, render_mode: str | None = None):
+    def __init__(
+        self,
+        spec: mujoco.MjSpec,
+        frame_skip: int = 10,
+        render_mode: str | None = None,
+        renderer_kwargs: dict[str, Any] = {},
+    ):
         assert frame_skip >= 1, f"Frame skip must be >= 1. Got {frame_skip}."
         assert render_mode is None or render_mode in self.metadata["render_modes"], (
             f"Invalid rendering mode {render_mode}. Must be in {self.metadata['render_modes']}."
@@ -35,7 +47,9 @@ class MujocoBaseEnv(ABC, gym.Env):
         self.data = mujoco.MjData(self.model)
         self._frame_skip = frame_skip
         self.render_mode = render_mode
-        self._renderer = None
+        self._renderer = (
+            None if render_mode is None else mujoco.Renderer(self.model, **renderer_kwargs)
+        )
         self._home_key_id = self._set_home_key()
         # Setup action space
         ctrl_low = self.model.actuator_ctrlrange[:, 0].astype(np.float32)
@@ -75,10 +89,10 @@ class MujocoBaseEnv(ABC, gym.Env):
         reward, terminated = self._compute_reward(obs, action)
         return obs, reward, terminated, False, self._get_info()
 
-    def render(self) -> RGBType:
+    def render(self, *, camera: str | int = -1) -> RGBType:
         if self._renderer is None:
-            self._renderer = mujoco.Renderer(self.model, height=240, width=320)
-        self._renderer.update_scene(self.data)
+            self._renderer = mujoco.Renderer(self.model)
+        self._renderer.update_scene(self.data, camera=camera)
         return self._renderer.render()
 
     # region Helpers
