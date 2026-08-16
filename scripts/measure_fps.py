@@ -42,7 +42,7 @@ def main(env_name: str, n_episodes: int = 5, seed: int = 0, kwargs: dict | None 
         "Environment does not expose MuJoCo model and data structs."
     )
     env.reset(seed=seed)
-    frame_skip = getattr(unwrapped, "_frame_skip", 1)
+    frame_skip = getattr(unwrapped, "frame_skip", 1)
     action = unwrapped.data.ctrl.copy()
 
     print(f"Environment:    {env}")

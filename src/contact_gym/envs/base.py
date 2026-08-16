@@ -42,10 +42,14 @@ class MujocoBaseEnv(ABC, gym.Env):
         ctrl_high = self.model.actuator_ctrlrange[:, 1].astype(np.float32)
         self.action_space = spaces.Box(low=ctrl_low, high=ctrl_high, dtype=np.float32)
 
+    @property
+    def frame_skip(self) -> int:
+        return self._frame_skip
+
     # region Core API
 
     def reset(
-        self, seed: int | None = None, options: dict[str, Any] | None = None
+        self, *, seed: int | None = None, options: dict[str, Any] | None = None
     ) -> tuple[ObsType, InfoType]:
         super().reset(seed=seed, options=options)
         mujoco.mj_resetDataKeyframe(self.model, self.data, self._home_key_id)
