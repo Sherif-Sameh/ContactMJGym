@@ -37,8 +37,8 @@ class MinkControllerAction(TaskSpaceControllerAction):
     applied to the environment.
 
     Args:
-        env: The MuJoCo-based manipulation environment to wrap. Must define mocap bodies
-            welded to sites via site-to-site equality constraints.
+        env: The MuJoCo-based manipulation environment to wrap. Must define matching
+            mocap bodies for every end-effector site.
         max_tstep: Maximum translation step size (Euclidean norm, in meters)
             applied per action. Default value is 0.05.
         max_rstep: Maximum rotation step size (norm of the rotation vector,
@@ -47,8 +47,9 @@ class MinkControllerAction(TaskSpaceControllerAction):
             :func:`~..utils.mj_utils.filter_actuators`. If empty, we rely on a simple
             heuristic by filtering for actuators whose `trntype` is
             `mujoco.mjtTrn.mjTRN_TENDON`. Default value is an empty dict.
-        mink_cfg: Mink configuration. Determines sites, solver config, error thresholds,
-            and task + limit configs. If None, default values are used. Default value is None.
+        mink_cfg: Mink configuration. Determines sites, mocaps, solver config, error
+            thresholds, and task + limit configs. If None, default values are used.
+            Default value is None.
         aux_limits: Auxiliary limits to add to the default :class:`mink.ConfigurationLimit`.
             Default value is [].
     """
@@ -67,9 +68,18 @@ class MinkControllerAction(TaskSpaceControllerAction):
         mink_cfg = MinkCfg() if mink_cfg is None else mink_cfg
         nrobot = len(mink_cfg.sites)
         super().__init__(env, nrobot, max_tstep, max_rstep, fltr_acts_kwargs)
+        assert len(mink_cfg.sites) == len(mink_cfg.mocaps), (
+            "Expected matching end-effector sites and mocap bodies. "
+            f"Got {len(mink_cfg.sites)} sites and {len(mink_cfg.mocaps)} mocaps."
+        )
         assert not any(env.unwrapped.model.site(site) is None for site in mink_cfg.sites)
+        assert not any(env.unwrapped.model.body(mocap) is None for mocap in mink_cfg.mocaps)
         self.data = env.unwrapped.data
         self.siteid = [env.unwrapped.model.site(site).id for site in mink_cfg.sites]
+        self.mocapid = [
+            env.unwrapped.model.body_mocapid[env.unwrapped.model.body(mocap).id]
+            for mocap in mink_cfg.mocaps
+        ]
         # Setup mink configuration, tasks, and limits
         self._configuration = mink.Configuration(env.unwrapped.model)
         self._tasks = [
@@ -93,13 +103,15 @@ class MinkControllerAction(TaskSpaceControllerAction):
     ) -> tuple[ObsType, InfoType]:
         """Resets the environment to an initial internal state, returning an initial observation and info."""
         obs, info = super().reset(seed=seed, options=options)
-        # Reset frame tasks
-        site_xpos = self.data.site_xpos.take(self.siteid, axis=0)
-        site_xmat = self.data.site_xmat.take(self.siteid, axis=0)
+        # Reset frame tasks and mocap
         for i, task in enumerate(self._tasks[:-1]):
+            sid, mid = self.siteid[i], self.mocapid[i]
+            site_xpos, site_xmat = self.data.site_xpos[sid], self.data.site_xmat[sid]
+            mocap_pos, mocap_quat = self.data.mocap_pos[mid], self.data.mocap_quat[mid]
             site_quat = np.empty(4)
-            mujoco.mju_mat2Quat(site_quat, site_xmat[i])
-            task.set_target(mink.SE3(wxyz_xyz=np.concatenate([site_quat, site_xpos[i]])))
+            mujoco.mju_mat2Quat(site_quat, site_xmat)
+            task.set_target(mink.SE3(wxyz_xyz=np.concatenate([site_quat, site_xpos])))
+            mocap_pos[:], mocap_quat[:] = site_xpos, site_quat
         # Reset posture task
         self._configuration.update(self.data.qpos)
         self._tasks[-1].set_target_from_configuration(self._configuration)
@@ -172,12 +184,15 @@ class MinkControllerAction(TaskSpaceControllerAction):
         # Limit the action norms
         step = np.sqrt(np.sum(action * action, axis=2)) + 1e-12
         action *= np.minimum(1.0, limits / step)[:, :, None]
-        # Add pose offsets to target poses in place
+        # Add pose offsets to target poses in place and update mocaps
         for i, task in enumerate(self._tasks[:-1]):
+            mid = self.mocapid[i]
+            mocap_pos, mocap_quat = self.data.mocap_pos[mid], self.data.mocap_quat[mid]
             target = task.transform_target_to_world
             tgt_quat, tgt_pos = target.wxyz_xyz[:4], target.wxyz_xyz[4:]
             tgt_pos += action[i, 0]
             mujoco.mju_quatIntegrate(tgt_quat, action[i, 1], 1.0)
+            mocap_pos[:], mocap_quat[:] = tgt_pos, tgt_quat
 
     def _has_converged(self, pos_threshold_sqr: float, ori_threshold_sqr: float) -> bool:
         """Check whether all frame tasks have converged according to the set error thresholds."""
@@ -196,9 +211,13 @@ class MinkControllerAction(TaskSpaceControllerAction):
 class MinkCfg:
     """Configuration for the mink tasks, IK solver, thresholds, etc."""
 
-    sites: tuple[str] = ("hand-tcp",)
+    sites: tuple[str, ...] = ("hand-tcp",)
     """Names of end-effector sites to control. A single site is expected per robot.
     Default value is ("hand-tcp",)."""
+
+    mocaps: tuple[str, ...] = ("mocap",)
+    """Names of mocap bodies for target visualization. A single mocap is expected per robot.
+    Default value is ("mocap",)."""
 
     max_iters: int = 5
     """Maximum number of iterations for solving IK per action. Default value is 5."""

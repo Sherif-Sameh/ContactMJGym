@@ -15,6 +15,8 @@ if TYPE_CHECKING:
 
     from .base import ActType, InfoType, ObsType
 
+    TupleNDArray6 = tuple[NDArray, NDArray, NDArray, NDArray, NDArray, NDArray]
+
 
 class MujocoEdgeGraspEnv(MujocoBaseEnv):
     """MuJoCo-based edge grasp environment.
@@ -230,7 +232,7 @@ class MujocoEdgeGraspEnv(MujocoBaseEnv):
 
     # region Obs Helpers
 
-    def _get_poses(self) -> tuple[NDArray, NDArray, NDArray, NDArray, NDArray, NDArray]:
+    def _get_poses(self) -> TupleNDArray6:
         """Get the TCP, object, object-TCP poses as position vectors and rotation matrices."""
         # TCP pose relative to the world frame
         tcp_pos = self.data.site_xpos[self._mdata.tcp_site_id]
@@ -246,9 +248,7 @@ class MujocoEdgeGraspEnv(MujocoBaseEnv):
         tcp_obj_rmat = tcp_rmat.T @ obj_rmat
         return tcp_pos, tcp_rmat, obj_pos, obj_rmat, tcp_obj_pos, tcp_obj_rmat
 
-    def _get_twists(
-        self, tcp_rmat: NDArray, obj_rmat: NDArray
-    ) -> tuple[NDArray, NDArray, NDArray, NDArray, NDArray, NDArray]:
+    def _get_twists(self, tcp_rmat: NDArray, obj_rmat: NDArray) -> TupleNDArray6:
         """Get TCP, object, and object-TCP twists as linear and angular velocity vectors.
 
         Linear velocities are world-frame. Angular velocities are local to the frame of the body
