@@ -61,17 +61,15 @@ class TaskSpaceControllerAction(ABC, gym.ActionWrapper):
             f"Unsupported env type {env.unwrapped.__class__.__name__}. "
             f"Must be a subclass of {MujocoBaseEnv.__name__}."
         )
-        assert self.env.unwrapped.model.nu == self.env.unwrapped.model.nactuator, (
+        assert env.unwrapped.model.nu == env.unwrapped.model.nactuator, (
             "Wrapper assumes all actuators are SISO."
         )
-        assert self.env.unwrapped.model.nu == env.action_space.shape[0]
-        self.data = self.env.unwrapped.data
+        assert env.unwrapped.model.nu == env.action_space.shape[0]
+        self.data = env.unwrapped.data
         # Setup action buffer
-        self.action_buffer = np.zeros(
-            self.env.unwrapped.model.nu, dtype=self.env.action_space.dtype
-        )
+        self.action_buffer = np.zeros(env.unwrapped.model.nu, dtype=env.action_space.dtype)
         # Find gripper actuator ids
-        gri_idxs = self._get_gripper_indices(self.env.unwrapped.model, fltr_acts_kwargs)
+        gri_idxs = self._get_gripper_indices(env.unwrapped.model, fltr_acts_kwargs)
         if len(gri_idxs) == 1:
             gri_idxs = slice(gri_idxs[0], gri_idxs[0] + 1)
         # Setup action space

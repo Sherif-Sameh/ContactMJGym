@@ -74,7 +74,6 @@ class MinkControllerAction(TaskSpaceControllerAction):
         )
         assert not any(env.unwrapped.model.site(site) is None for site in mink_cfg.sites)
         assert not any(env.unwrapped.model.body(mocap) is None for mocap in mink_cfg.mocaps)
-        self.data = env.unwrapped.data
         self.siteid = [env.unwrapped.model.site(site).id for site in mink_cfg.sites]
         self.mocapid = [
             env.unwrapped.model.body_mocapid[env.unwrapped.model.body(mocap).id]
@@ -86,6 +85,7 @@ class MinkControllerAction(TaskSpaceControllerAction):
             mink.FrameTask(site, "site", **asdict(mink_cfg.frame_task_cfg))
             for site in mink_cfg.sites
         ] + [mink.PostureTask(env.unwrapped.model, **asdict(mink_cfg.posture_task_cfg))]
+        self._frame_tasks = self._tasks[:-1]
         self._limits = [
             mink.ConfigurationLimit(env.unwrapped.model, **asdict(mink_cfg.configuration_limit_cfg))
         ] + aux_limits
@@ -104,7 +104,7 @@ class MinkControllerAction(TaskSpaceControllerAction):
         """Resets the environment to an initial internal state, returning an initial observation and info."""
         obs, info = super().reset(seed=seed, options=options)
         # Reset frame tasks and mocap
-        for i, task in enumerate(self._tasks[:-1]):
+        for i, task in enumerate(self._frame_tasks):
             sid, mid = self.siteid[i], self.mocapid[i]
             site_xpos, site_xmat = self.data.site_xpos[sid], self.data.site_xmat[sid]
             mocap_pos, mocap_quat = self.data.mocap_pos[mid], self.data.mocap_quat[mid]
@@ -185,7 +185,7 @@ class MinkControllerAction(TaskSpaceControllerAction):
         step = np.sqrt(np.sum(action * action, axis=2)) + 1e-12
         action *= np.minimum(1.0, limits / step)[:, :, None]
         # Add pose offsets to target poses in place and update mocaps
-        for i, task in enumerate(self._tasks[:-1]):
+        for i, task in enumerate(self._frame_tasks):
             mid = self.mocapid[i]
             mocap_pos, mocap_quat = self.data.mocap_pos[mid], self.data.mocap_quat[mid]
             target = task.transform_target_to_world
@@ -196,7 +196,7 @@ class MinkControllerAction(TaskSpaceControllerAction):
 
     def _has_converged(self, pos_threshold_sqr: float, ori_threshold_sqr: float) -> bool:
         """Check whether all frame tasks have converged according to the set error thresholds."""
-        for task in self._tasks[:-1]:
+        for task in self._frame_tasks:
             err = task.compute_error(self._configuration)
             err_sqr = err * err
             if np.sum(err_sqr[:3]) > pos_threshold_sqr or np.sum(err_sqr[3:]) > ori_threshold_sqr:

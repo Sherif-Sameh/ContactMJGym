@@ -56,16 +56,15 @@ class MocapControllerAction(TaskSpaceControllerAction):
     ):
         nrobot = 1 if not hasattr(env.unwrapped, "model") else env.unwrapped.model.nmocap
         super().__init__(env, nrobot, max_tstep, max_rstep, fltr_acts_kwargs)
-        assert self.env.unwrapped.model.nmocap > 0
-        self.data = self.env.unwrapped.data
+        assert env.unwrapped.model.nmocap > 0
         # Enable mocap weld constraints and get mocap -> site id mapping
-        self._mocap_siteid = self._setup_mocap_bodies(self.env.unwrapped.model)
+        self._mocap_siteid = self._setup_mocap_bodies(env.unwrapped.model)
         # Disable actuators if requested
         if disable_acts:
-            nactuator = self.env.unwrapped.model.nactuator
-            gri_idxs = self._get_gripper_indices(self.env.unwrapped.model, fltr_acts_kwargs)
+            nactuator = env.unwrapped.model.nactuator
+            gri_idxs = self._get_gripper_indices(env.unwrapped.model, fltr_acts_kwargs)
             robot_idxs = [i for i in range(nactuator) if i not in gri_idxs]
-            disable_actuators(self.env.unwrapped.model, robot_idxs)
+            disable_actuators(env.unwrapped.model, robot_idxs)
         # Build action function for mocap bodies
         self.mocap_action = self._build_mocap_action(max_tstep, max_rstep)
 
