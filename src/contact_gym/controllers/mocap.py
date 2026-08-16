@@ -9,7 +9,7 @@ from ..utils.mj_utils import disable_actuators
 from .task_space import TaskSpaceControllerAction
 
 if TYPE_CHECKING:
-    from ..envs.base import ActType, InfoType, MujocoBaseEnv, ObsType
+    from ..envs.mujoco_base import ActType, InfoType, MujocoBaseEnv, ObsType
     from .task_space import WrapperActType
 
 

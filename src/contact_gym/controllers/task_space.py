@@ -9,11 +9,11 @@ import numpy as np
 from gymnasium import spaces
 from gymnasium.wrappers.utils import rescale_box
 
-from ..envs.base import MujocoBaseEnv
+from ..envs.mujoco_base import MujocoBaseEnv
 from ..utils.mj_utils import filter_actuators
 
 if TYPE_CHECKING:
-    from ..envs.base import ActType
+    from ..envs.mujoco_base import ActType
 
     WrapperActType = ActType
 

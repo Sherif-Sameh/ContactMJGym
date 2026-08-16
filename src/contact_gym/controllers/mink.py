@@ -16,7 +16,7 @@ from .task_space import TaskSpaceControllerAction
 if TYPE_CHECKING:
     from numpy.typing import NDArray
 
-    from ..envs.base import ActType, InfoType, MujocoBaseEnv, ObsType
+    from ..envs.mujoco_base import ActType, InfoType, MujocoBaseEnv, ObsType
     from .task_space import WrapperActType
 
 

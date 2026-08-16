@@ -8,12 +8,12 @@ import numpy as np
 from gymnasium import spaces
 
 from ..scenes.builder import build_edge_grasp
-from .base import MujocoBaseEnv
+from .mujoco_base import MujocoBaseEnv
 
 if TYPE_CHECKING:
     from numpy.typing import NDArray
 
-    from .base import ActType, InfoType, ObsType
+    from .mujoco_base import ActType, InfoType, ObsType
 
     TupleNDArray6 = tuple[NDArray, NDArray, NDArray, NDArray, NDArray, NDArray]
 
