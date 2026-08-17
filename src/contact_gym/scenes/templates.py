@@ -177,7 +177,11 @@ def add_frame_sensors(
             mjtObj.mjOBJ_SITE,
             mjtObj.mjOBJ_CAMERA,
         ]
-    prefix = objname if refname is None else f"{refname}_{objname}"
+    prefix = (
+        objname.split("-")[-1]
+        if refname is None
+        else f"{refname.split('-')[-1]}_{objname.split('-')[-1]}"
+    )
     add_sensor = partial(
         spec.add_sensor, objtype=objtype, objname=objname, reftype=reftype, refname=refname
     )
@@ -240,8 +244,10 @@ def add_contact_sensor(
         ]
     assert 0 <= reduce < 4, f"reduce must be in [0, 4]. Got {reduce}."
     assert num > 0, f"num must be > 0. Got {num}."
+    prefix = "" if obj1name is None else obj1name.split("-")[-1]
+    prefix += "" if obj2name is None else f"_{obj2name.split('-')[-1]}"
     spec.add_sensor(
-        name=f"{obj1name}_{obj2name}_contact",
+        name=f"{prefix}_contact",
         type=mjtSensor.mjSENS_CONTACT,
         objtype=obj1type,
         objname=obj1name,

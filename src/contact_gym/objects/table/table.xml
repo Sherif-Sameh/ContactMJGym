@@ -25,7 +25,7 @@
       <geom name="leg_rl" pos="-0.255 0.205 0.155" class="leg"/>
       <geom name="leg_rr" pos="0.255 0.205 0.155" class="leg"/>
       <!-- Reference pose marker for placing objects -->
-      <site name="tabletop_center" pos="0 0 0.351"/>
+      <site name="topcenter" pos="0 0 0.351"/>
     </body>
   </worldbody>
 </mujoco>
