@@ -29,15 +29,12 @@
         <geom type="mesh" contype="0" conaffinity="0" group="2"/>
       </default>
       <default class="collision">
-        <geom type="capsule" contype="1" conaffinity="15" group="3"/>
+        <geom type="capsule" group="3"/>
         <default class="eef_collision">
           <geom type="cylinder"/>
         </default>
       </default>
-      <default class="mocap">
-        <geom type="box" conaffinity="0" contype="0" group="4"/>
-      </default>
-      <site size="0.005" rgba="0.5 0.5 0.5 0.3" group="4"/>
+      <site size="0.001" rgba="0.5 0.5 0.5 0.3" group="4"/>
     </default>
   </default>
 
@@ -67,8 +64,6 @@
     <mesh file="wrist2_1.obj"/>
     <mesh file="wrist2_2.obj"/>
     <mesh file="wrist3.obj"/>
-
-    <model name="panda_hand" file="../franka_emika_panda/hand.xml"/>
   </asset>
 
   <worldbody>
@@ -127,10 +122,7 @@
                   <joint name="wrist_3_joint" class="size2"/>
                   <geom material="linkgray" mesh="wrist3" class="visual"/>
                   <geom class="eef_collision" pos="0 0.097 0" quat="1 1 0 0" size="0.046 0.02"/>
-                  <!-- <site name="attachment_site" pos="0 0.1 0" quat="-1 1 0 0"/> -->
-                  <frame pos="0 0.1 0" quat="-1 1 0 0">
-                    <attach model="panda_hand" body="hand" prefix="hand-"/>
-                  </frame>
+                  <site name="attachment_site" pos="0 0.1 0" quat="-1 1 0 0"/>
                 </body>
               </body>
             </body>
@@ -138,18 +130,7 @@
         </body>
       </body>
     </body>
-    <body name="mocap" childclass="ur10e" mocap="true">
-      <geom class="mocap" rgba="0 0.5 0 0.7" size="0.005 0.005 0.005"/>
-      <geom class="mocap" rgba="1 0 0 0.1" size="0.005" fromto="0 0 0 0.3 0 0"/>
-      <geom class="mocap" rgba="0 1 0 0.1" size="0.005" fromto="0 0 0 0 0.3 0"/>
-      <geom class="mocap" rgba="0 0 1 0.1" size="0.005" fromto="0 0 0 0 0 0.3"/>
-      <site name="mocap"/>
-    </body>
   </worldbody>
-
-  <equality>
-    <weld active="false" site1="mocap" site2="hand-tcp" solimp="0.9 0.95 0.001" solref="0.02 1"/>
-  </equality>
 
   <actuator>
     <general class="size4" name="shoulder_pan" joint="shoulder_pan_joint"/>
@@ -160,17 +141,7 @@
     <general class="size2" name="wrist_3" joint="wrist_3_joint"/>
   </actuator>
 
-  <sensor>
-    <contact name="impact"
-      subtree1="base"
-      reduce="maxforce"
-      num="1"
-      data="force"/>
-  </sensor>
-
   <keyframe>
-    <key name="home"
-      qpos="-1.5708 -1.5708 1.5708 -1.5708 -1.5708 0 0.04 0.04"
-      ctrl="-1.5708 -1.5708 1.5708 -1.5708 -1.5708 0 255"/>
+    <key name="home" qpos="-1.5708 -1.5708 1.5708 -1.5708 -1.5708 0" ctrl="-1.5708 -1.5708 1.5708 -1.5708 -1.5708 0"/>
   </keyframe>
 </mujoco>

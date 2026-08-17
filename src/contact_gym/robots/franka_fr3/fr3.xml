@@ -12,12 +12,9 @@
         <geom type="mesh" group="2" contype="0" conaffinity="0"/>
       </default>
       <default class="collision">
-        <geom type="mesh" contype="1" conaffinity="15" group="3" mass="0" density="0"/>
+        <geom type="mesh" group="3" mass="0" density="0"/>
       </default>
-      <default class="mocap">
-        <geom type="box" conaffinity="0" contype="0" group="4"/>
-      </default>
-      <site size="0.005" rgba="0.5 0.5 0.5 0.3" group="4"/>
+      <site size="0.001" rgba="0.5 0.5 0.5 0.3" group="4"/>
     </default>
   </default>
 
@@ -67,8 +64,6 @@
     <mesh name="link5_coll" file="link5.stl"/>
     <mesh name="link6_coll" file="link6.stl"/>
     <mesh name="link7_coll" file="link7.stl"/>
-    
-    <model name="panda_hand" file="../franka_emika_panda/hand.xml"/>
   </asset>
 
   <worldbody>
@@ -141,10 +136,7 @@
                       <geom mesh="link7_2" material="white" class="visual"/>
                       <geom mesh="link7_3" material="black" class="visual"/>
                       <geom name="fr3_link7_collision" class="collision" mesh="link7_coll"/>
-                      <!-- <site name="attachment_site" pos="0 0 0.107"/> -->
-                      <frame pos="0 0 0.107">
-                        <attach model="panda_hand" body="hand" prefix="hand-"/>
-                      </frame>
+                      <site name="attachment_site" pos="0 0 0.107"/>
                     </body>
                   </body>
                 </body>
@@ -154,18 +146,7 @@
         </body>
       </body>
     </body>
-    <body name="mocap" childclass="fr3" mocap="true">
-      <geom class="mocap" rgba="0 0.5 0 0.7" size="0.005 0.005 0.005"/>
-      <geom class="mocap" rgba="1 0 0 0.1" size="0.005" fromto="0 0 0 0.3 0 0"/>
-      <geom class="mocap" rgba="0 1 0 0.1" size="0.005" fromto="0 0 0 0 0.3 0"/>
-      <geom class="mocap" rgba="0 0 1 0.1" size="0.005" fromto="0 0 0 0 0 0.3"/>
-      <site name="mocap"/>
-    </body>
   </worldbody>
-
-  <equality>
-    <weld active="false" site1="mocap" site2="hand-tcp" solimp="0.9 0.95 0.001" solref="0.02 1"/>
-  </equality>
 
   <actuator>
     <position class="fr3" name="fr3_joint1" joint="fr3_joint1" kp="4500" kv="450"/>
@@ -177,21 +158,11 @@
     <position class="fr3" name="fr3_joint7" joint="fr3_joint7" kp="2000" kv="200"/>
   </actuator>
 
-  <sensor>
-    <contact name="impact"
-      subtree1="fr3_link0"
-      reduce="maxforce"
-      num="1"
-      data="force"/>
-  </sensor>
-
   <contact>
     <exclude body1="fr3_link0" body2="fr3_link1"/>
   </contact>
 
   <keyframe>
-    <key name="home"
-      qpos="0 0 0 -1.57079 0 1.57079 -0.7853 0.04 0.04"
-      ctrl="0 0 0 -1.57079 0 1.57079 -0.7853 255"/>
+    <key name="home" qpos="0 0 0 -1.57079 0 1.57079 -0.7853" ctrl="0 0 0 -1.57079 0 1.57079 -0.7853"/>
   </keyframe>
 </mujoco>
