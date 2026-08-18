@@ -8,6 +8,8 @@ from contact_gym.utils.mj_utils import (
     get_dof_dim_from_joints,
 )
 
+# region get_dof_dim
+
 _DOF_MODEL_XML = """
 <mujoco>
   <worldbody>
@@ -35,9 +37,6 @@ _DOF_MODEL_XML = """
 @pytest.fixture
 def dof_model() -> mujoco.MjModel:
     return mujoco.MjModel.from_xml_string(_DOF_MODEL_XML)
-
-
-# region get_dof_dim
 
 
 @pytest.mark.unit

@@ -42,6 +42,7 @@ def add_body_at_site(
     """
     # Get attachment site body and pose
     site = spec1.site(sitename)
+    assert site is not None, f"{site} site does not exist within spec1."
     attach_body = site.parent
     attach_pos, attach_quat = site.pos, site.quat
     # Add frame at attachment body and pose then delete site
@@ -49,6 +50,7 @@ def add_body_at_site(
     spec1.delete(site)
     # Attach new body at attachment frame
     body = spec2.body(bodyname)
+    assert body is not None, f"{body} body does not exist within spec2."
     attach_frame.attach_body(body, prefix)
     return spec1
 
@@ -126,8 +128,13 @@ def add_weld_equality(
     Returns:
         Updated MuJoCo spec.
     """
-    assert obj1name is not None or obj2name is not None
     assert objtype in [mjtObj.mjOBJ_BODY, mjtObj.mjOBJ_SITE]
+    if objtype == mjtObj.mjOBJ_BODY:
+        assert obj1name is not None, "Object 1 must be specified with mjOBJ_BODY object type."
+    else:
+        assert obj1name is not None and obj2name is not None, (
+            "Both objects must be specified with mjOBJ_SITE object type."
+        )
     spec.add_equality(
         type=mujoco.mjtEq.mjEQ_WELD,
         name=name,
@@ -152,7 +159,7 @@ def add_frame_sensors(
     refname: str | None = None,
     *,
     prefix: str | None = None,
-    sensors: list[str] = [],
+    sensors: tuple[str, ...] = (),
 ) -> mujoco.MjSpec:
     """Add a collection of frame-based sensors to the given spec.
 
@@ -172,14 +179,16 @@ def add_frame_sensors(
     Returns:
         Updated MuJoCo spec.
     """
-    for otype in [objtype, reftype]:
+    assert objtype is not None, "Object 1's type must be specified."
+    assert objname is not None, "Object 1's name must be specified."
+    for oname, otype in zip([objname, refname], [objtype, reftype]):
         assert otype is None or otype in [
             mjtObj.mjOBJ_BODY,
             mjtObj.mjOBJ_XBODY,
             mjtObj.mjOBJ_GEOM,
             mjtObj.mjOBJ_SITE,
             mjtObj.mjOBJ_CAMERA,
-        ]
+        ], f"Invalid object type for object {oname}."
     if prefix is None:
         prefix = (
             objname.split("-")[-1]
@@ -249,7 +258,7 @@ def add_contact_sensor(
             mjtObj.mjOBJ_GEOM,
             mjtObj.mjOBJ_SITE,
         ]
-    assert 0 <= reduce < 4, f"reduce must be in [0, 4]. Got {reduce}."
+    assert 0 <= reduce < 4, f"reduce must be in [0, 3]. Got {reduce}."
     assert num > 0, f"num must be > 0. Got {num}."
     if prefix is None:
         prefix = "" if obj1name is None else obj1name.split("-")[-1]
