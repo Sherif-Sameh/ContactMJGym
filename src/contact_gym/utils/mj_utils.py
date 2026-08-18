@@ -1,9 +1,33 @@
-from __future__ import annotations
+import mujoco
 
-from typing import TYPE_CHECKING
 
-if TYPE_CHECKING:
-    import mujoco
+def get_dof_dim_from_joints(model: mujoco.MjModel, qpos_adr: int, qpos_dim: int) -> int:
+    """Get the `dof` dimension of a set of joints according to their types.
+
+    Args:
+        model: MuJoCo model.
+        qpos_adr: Start address in `qpos`.
+        qpos_dim: Dimension of `qpos` to consider.
+
+    Returns:
+        `dof` dimension of the associated set of joints.
+    """
+    assert 0 <= qpos_adr < model.nq
+    assert 0 <= qpos_adr + qpos_dim - 1 < model.nq
+    assert qpos_dim > 0
+    dof_dim = 0
+
+    def get_dof_dim_jnt(type: mujoco.mjtJoint) -> int:
+        if type == mujoco.mjtJoint.mjJNT_FREE:
+            return 6
+        if type == mujoco.mjtJoint.mjJNT_BALL:
+            return 3
+        return 1
+
+    for jnt in range(model.njnt):
+        if qpos_adr <= model.jnt_qposadr[jnt] < qpos_adr + qpos_dim:
+            dof_dim += get_dof_dim_jnt(model.jnt_type[jnt])
+    return dof_dim
 
 
 def filter_joints(

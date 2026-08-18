@@ -32,3 +32,26 @@ ROBOT_HOME_KEYS = {
     }
 }
 GRIPPER_HOME_KEYS = {"EdgeGrasp": {"panda_hand": {"qpos": (0.04, 0.04), "ctrl": (255.0,)}}}
+
+
+# Helpers for getting qpos and ctrl dimensions
+def get_qpos_dim(name: str) -> int:
+    """Retrieve the `qpos` dimenension of the given asset."""
+    env = next(iter(ROBOT_HOME_KEYS.keys()))
+    if name in ALL_ROBOTS:
+        return len(ROBOT_HOME_KEYS[env][name]["qpos"])
+    assert name in ALL_GRIPPERS, (
+        f"Unrecognized name {name}. Must be one of {ALL_ROBOTS + ALL_GRIPPERS}."
+    )
+    return len(GRIPPER_HOME_KEYS[env][name]["qpos"])
+
+
+def get_ctrl_dim(name: str) -> int:
+    """Retrieve the `ctrl` dimenension of the given asset."""
+    env = next(iter(ROBOT_HOME_KEYS.keys()))
+    if name in ALL_ROBOTS:
+        return len(ROBOT_HOME_KEYS[env][name]["ctrl"])
+    assert name in ALL_GRIPPERS, (
+        f"Unrecognized name {name}. Must be one of {ALL_ROBOTS + ALL_GRIPPERS}."
+    )
+    return len(GRIPPER_HOME_KEYS[env][name]["qpos"])
