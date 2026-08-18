@@ -91,11 +91,13 @@ def build_edge_grasp(
         f"gripper-{gripper_bodyname}",
         mjtObj.mjOBJ_BODY,
         f"object-{object_bodyname}",
+        prefix="gripper_object",
     )
     scene_spec = templates.add_contact_sensor(
         scene_spec,
         mjtObj.mjOBJ_XBODY,
         robot_bodyname,
+        prefix="robot",
         data=1 << mjtConDataField.mjCONDATA_FORCE.value,
         reduce=2,
     )

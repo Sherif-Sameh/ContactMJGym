@@ -151,6 +151,7 @@ def add_frame_sensors(
     reftype: mjtObj | None = None,
     refname: str | None = None,
     *,
+    prefix: str | None = None,
     sensors: list[str] = [],
 ) -> mujoco.MjSpec:
     """Add a collection of frame-based sensors to the given spec.
@@ -163,6 +164,8 @@ def add_frame_sensors(
             sensor values are measured with respect to the global frame. Default value is None.
         refname: Name of the object to which the frame of reference is attached. If not given,
             sensor values are measured with respect to the global frame. Default value is None.
+        prefix: Optional prefix for sensor names. If None, a prefix is derived from `objname`
+            and `refname`. Default value is None.
         sensors: Names of the frame-based sensors to add. Names are expected without the "frame"
             prefix (e.g., "pos", "quat", "linvel"). Default value is empty.
 
@@ -177,11 +180,12 @@ def add_frame_sensors(
             mjtObj.mjOBJ_SITE,
             mjtObj.mjOBJ_CAMERA,
         ]
-    prefix = (
-        objname.split("-")[-1]
-        if refname is None
-        else f"{refname.split('-')[-1]}_{objname.split('-')[-1]}"
-    )
+    if prefix is None:
+        prefix = (
+            objname.split("-")[-1]
+            if refname is None
+            else f"{refname.split('-')[-1]}_{objname.split('-')[-1]}"
+        )
     add_sensor = partial(
         spec.add_sensor, objtype=objtype, objname=objname, reftype=reftype, refname=refname
     )
@@ -213,6 +217,7 @@ def add_contact_sensor(
     obj2type: mjtObj | None = None,
     obj2name: str | None = None,
     *,
+    prefix: str | None = None,
     data: int = 1 << mujoco.mjtConDataField.mjCONDATA_FOUND.value,
     reduce: int = 0,
     num: int = 1,
@@ -225,6 +230,8 @@ def add_contact_sensor(
         obj1name: Name of the first object for contact matching.
         obj2type: Type of the second object for contact matching.
         obj2name: Name of the second object for contact matching.
+        prefix: Optional prefix for sensor name. If None, a prefix is derived from `obj1name`
+            and `obj2name`. Default value is None.
         data: Specifies which data fields are reported for contacts. Defined through bit
             shifting using the :class:`mujoco.mjtConDataField` enum. Default value
             reports "found" only.
@@ -244,8 +251,9 @@ def add_contact_sensor(
         ]
     assert 0 <= reduce < 4, f"reduce must be in [0, 4]. Got {reduce}."
     assert num > 0, f"num must be > 0. Got {num}."
-    prefix = "" if obj1name is None else obj1name.split("-")[-1]
-    prefix += "" if obj2name is None else f"_{obj2name.split('-')[-1]}"
+    if prefix is None:
+        prefix = "" if obj1name is None else obj1name.split("-")[-1]
+        prefix += "" if obj2name is None else f"_{obj2name.split('-')[-1]}"
     spec.add_sensor(
         name=f"{prefix}_contact",
         type=mjtSensor.mjSENS_CONTACT,
