@@ -18,7 +18,7 @@ if TYPE_CHECKING:
     TupleNDArray6 = tuple[NDArray, NDArray, NDArray, NDArray, NDArray, NDArray]
 
 
-class MujocoEdgeGraspEnv(MujocoBaseEnv):
+class EdgeGraspEnv(MujocoBaseEnv):
     """MuJoCo-based edge grasp environment.
 
     The environment is setup with an object that cannot be picked up when laying completely flush on
@@ -122,7 +122,7 @@ class MujocoEdgeGraspEnv(MujocoBaseEnv):
         super().__init__(spec, frame_skip=frame_skip, render_mode=render_mode)
         self._mdata = self._setup_model_data()
         self._rcfg = EdgeGraspRewardCfg() if rew_cfg is None else rew_cfg
-        self._rterms = MujocoEdgeGraspEnv.RewardTerms()
+        self._rterms = EdgeGraspEnv.RewardTerms()
         # Setup observation space
         nobs = 12 * 3 + 6 * 3 + self.GRIPPER_DOFS * 2
         self.observation_space = spaces.Box(
@@ -139,7 +139,7 @@ class MujocoEdgeGraspEnv(MujocoBaseEnv):
         Called before `mujoco.mj_forward`.
         """
         # TODO: Update once domain randomization is implemented
-        self._rterms = MujocoEdgeGraspEnv.RewardTerms()
+        self._rterms = EdgeGraspEnv.RewardTerms()
 
     def _get_obs(self) -> ObsType:
         """Get the latest observations."""
@@ -208,13 +208,13 @@ class MujocoEdgeGraspEnv(MujocoBaseEnv):
 
     # region Helpers
 
-    def _setup_model_data(self) -> MujocoEdgeGraspEnv.ModelData:
+    def _setup_model_data(self) -> EdgeGraspEnv.ModelData:
         obj_jnt_id = self.model.joint("object-joint").id
         assert self.model.sensor("impact").dim == 3
         finger_jnt_id = self.model.joint("hand-finger_joint1").id
         geom = self.model.geom("table-tabletop")
         tabletop_pos, tabletop_size = geom.pos, geom.size
-        return MujocoEdgeGraspEnv.ModelData(
+        return EdgeGraspEnv.ModelData(
             tcp_site_id=int(self.model.site("hand-tcp").id),
             con_snsr_adr=int(self.model.sensor("impact").adr[0]),
             obj_qpos_adr=int(self.model.jnt_qposadr[obj_jnt_id]),

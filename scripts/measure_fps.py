@@ -20,16 +20,16 @@ def main(env_name: str, n_episodes: int = 5, seed: int = 0, kwargs: dict | None 
     until the episode terminates/truncates, whichever comes first.
 
     Args:
-        env_name: Registered gymnasium environment ID (e.g., "MujocoEdgeGrasp-v0").
+        env_name: Registered gymnasium environment ID (e.g., "EdgeGrasp-v0").
         n_episodes: Number of episodes to time. Default value is 5.
         seed: Base seed; episode `i` is seeded with `seed + i`. Default value is 1.
         kwargs: Optional extra kwargs forwarded to gym.make (e.g., '{"frame_skip": 10}').
 
     Usage:
-        python measure_fps.py --env_name "MujocoEdgeGrasp-v0"
+        python measure_fps.py --env_name "EdgeGrasp-v0"
 
         python measure_fps.py \
-            --env_name "MujocoEdgeGrasp-v0" \
+            --env_name "EdgeGrasp-v0" \
             --n_episodes 4 \
             --seed 0 \
             --kwargs '{"frame_skip": 20}'

@@ -27,7 +27,7 @@ def main(
     """Launch a live MuJoCo viewer window for a registered gymnasium env.
 
     Args:
-        env_name: Registered gymnasium environment ID (e.g., "MujocoEdgeGrasp-v0").
+        env_name: Registered gymnasium environment ID (e.g., "EdgeGrasp-v0").
         rand_act: Sample a random perturbation to the env's current ctrl at every step.
             Otherwise, apply the initial ctrl at every step. Default value is False.
         pert_scale: Scale factor for random action perturbations. Default value is 3e-4.  
@@ -40,10 +40,10 @@ def main(
         kwargs: Optional extra kwargs forwarded to gym.make (e.g., '{"frame_skip": 10}').
 
     Usage:
-        python simple_agent.py --env_name "MujocoEdgeGrasp-v0"
+        python simple_agent.py --env_name "EdgeGrasp-v0"
 
         python simple_agent.py \
-            --env_name "MujocoEdgeGrasp-v0" \
+            --env_name "EdgeGrasp-v0" \
             --rand_act \
             --render_interval 3 \
             --max_steps 500 \
