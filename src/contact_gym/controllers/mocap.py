@@ -62,16 +62,18 @@ class MocapControllerAction(TaskSpaceControllerAction):
         # Disable actuators if requested
         if disable_acts:
             nactuator = env.unwrapped.model.nactuator
-            gri_idxs = self._get_gripper_indices(env.unwrapped.model, fltr_acts_kwargs)
-            robot_idxs = [i for i in range(nactuator) if i not in gri_idxs]
-            disable_actuators(env.unwrapped.model, robot_idxs)
+            gri_acts = self._get_gripper_actuators(env.unwrapped.model, fltr_acts_kwargs)
+            rbt_acts = [i for i in range(nactuator) if i not in gri_acts]
+            disable_actuators(env.unwrapped.model, rbt_acts)
         # Build action function for mocap bodies
         self.mocap_action = self._build_mocap_action(max_tstep, max_rstep)
 
     def reset(
         self, *, seed: int | None = None, options: dict[str, Any] | None = None
     ) -> tuple[ObsType, InfoType]:
-        """Resets the environment to an initial internal state, returning an initial observation and info."""
+        """Resets the environment to an initial internal state, returning an initial
+        observation and info.
+        """
         obs, info = super().reset(seed=seed, options=options)
         # Reset mocap bodies to corresponding sites
         site_xpos = self.data.site_xpos.take(self._mocap_siteid, axis=0)

@@ -61,15 +61,13 @@ class TaskSpaceControllerAction(ABC, gym.ActionWrapper):
             f"Unsupported env type {env.unwrapped.__class__.__name__}. "
             f"Must be a subclass of {MujocoBaseEnv.__name__}."
         )
-        assert env.unwrapped.model.nu == env.unwrapped.model.nactuator, (
-            "Wrapper assumes all actuators are SISO."
-        )
         assert env.unwrapped.model.nu == env.action_space.shape[0]
         self.data = env.unwrapped.data
         # Setup action buffer
         self.action_buffer = np.zeros(env.unwrapped.model.nu, dtype=env.action_space.dtype)
-        # Find gripper actuator ids
-        gri_idxs = self._get_gripper_indices(env.unwrapped.model, fltr_acts_kwargs)
+        # Find gripper actuator and ctrl ids
+        gri_acts = self._get_gripper_actuators(env.unwrapped.model, fltr_acts_kwargs)
+        gri_idxs = self._get_gripper_indices(env.unwrapped.model, gri_acts)
         if len(gri_idxs) == 1:
             gri_idxs = slice(gri_idxs[0], gri_idxs[0] + 1)
         # Setup action space
@@ -96,12 +94,22 @@ class TaskSpaceControllerAction(ABC, gym.ActionWrapper):
     # region Helpers
 
     @staticmethod
-    def _get_gripper_indices(model: mujoco.MjModel, fltr_kwargs: dict[str, Any]) -> list[int]:
-        """Get the indices that correspond to gripper actuators in ctrl."""
+    def _get_gripper_actuators(model: mujoco.MjModel, fltr_kwargs: dict[str, Any]) -> list[int]:
+        """Get the IDs of gripper actuators."""
         if fltr_kwargs:  # rely on user filters
             return filter_actuators(model, **fltr_kwargs)
         # Fall back to simple trntype heuristic
-        return filter_actuators(model, trntype=mujoco.mjtTrn.mjTRN_TENDON)
+        return filter_actuators(model, trntype=mujoco.mjtTrn.mjTRN_TENDON, flags=(True,))
+
+    @staticmethod
+    def _get_gripper_indices(model: mujoco.MjModel, gripper_actuators: list[int]) -> list[int]:
+        """Get the indices that correspond to gripper actuators in ctrl."""
+        gripper_indices = []
+        for act in gripper_actuators:
+            ctrladr = model.actuator_ctrladr[act]
+            ctrlnum = model.actuator_ctrlnum[act]
+            gripper_indices.extend(list(range(ctrladr, ctrladr + ctrlnum)))
+        return gripper_indices
 
     def _get_unscaled_action_space(
         self, nrobot: int, max_tstep: float, max_rstep: float, gripper_indices: list[int] | slice
@@ -127,7 +135,7 @@ class TaskSpaceControllerAction(ABC, gym.ActionWrapper):
         # No gripper actuators -> do nothing
         if isinstance(gripper_indices, list) and not gripper_indices:
 
-            def empty_action(action: WrapperActType) -> None: ...
+            def empty_action(_: WrapperActType) -> None: ...
 
             return empty_action
 
