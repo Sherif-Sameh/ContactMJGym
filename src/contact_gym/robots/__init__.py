@@ -54,4 +54,4 @@ def get_ctrl_dim(name: str) -> int:
     assert name in ALL_GRIPPERS, (
         f"Unrecognized name {name}. Must be one of {ALL_ROBOTS + ALL_GRIPPERS}."
     )
-    return len(GRIPPER_HOME_KEYS[env][name]["qpos"])
+    return len(GRIPPER_HOME_KEYS[env][name]["ctrl"])
