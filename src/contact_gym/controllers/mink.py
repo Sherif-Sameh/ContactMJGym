@@ -89,19 +89,23 @@ class MinkControllerAction(TaskSpaceControllerAction):
         self._limits = [
             mink.ConfigurationLimit(env.unwrapped.model, **asdict(mink_cfg.configuration_limit_cfg))
         ] + aux_limits
-        # Setup robot joint and actuator ids
-        gri_idxs = self._get_gripper_indices(env.unwrapped.model, fltr_acts_kwargs)
-        act_idxs = [i for i in range(env.unwrapped.model.nactuator) if i not in gri_idxs]
-        jnt_idxs = self._get_joint_indices(env.unwrapped.model, act_idxs)
+        # Setup robot qpos and ctrl ids
+        gri_acts = self._get_gripper_actuators(env.unwrapped.model, fltr_acts_kwargs)
+        rbt_acts = [i for i in range(env.unwrapped.model.nactuator) if i not in gri_acts]
+        gri_idxs = self._get_gripper_indices(env.unwrapped.model, gri_acts)
+        ctrl_idxs = [i for i in range(env.unwrapped.model.nu) if i not in gri_idxs]
+        jnt_idxs = self._get_qpos_indices(env.unwrapped.model, rbt_acts)
         # Build action function for robot control via mink
         self.mink_action = self._build_mink_action(
-            mink_cfg, act_idxs, jnt_idxs, max_tstep, max_rstep
+            mink_cfg, ctrl_idxs, jnt_idxs, max_tstep, max_rstep
         )
 
     def reset(
         self, *, seed: int | None = None, options: dict[str, Any] | None = None
     ) -> tuple[ObsType, InfoType]:
-        """Resets the environment to an initial internal state, returning an initial observation and info."""
+        """Resets the environment to an initial internal state, returning an initial
+        observation and info.
+        """
         obs, info = super().reset(seed=seed, options=options)
         # Reset frame tasks and mocap
         for i, task in enumerate(self._frame_tasks):
@@ -134,23 +138,23 @@ class MinkControllerAction(TaskSpaceControllerAction):
     # region Helpers
 
     @staticmethod
-    def _get_joint_indices(model: mujoco.MjModel, actuator_indices: list[int]) -> list[int]:
-        """Get the joint indices in qpos that correspond to the robot actuators in ctrl."""
-        joint_indices = []
-        for i in actuator_indices:
-            assert model.actuator_trntype[i] in [
+    def _get_qpos_indices(model: mujoco.MjModel, actuator_indices: list[int]) -> list[int]:
+        """Get the qpos indices that correspond to the joints of the robot's actuators."""
+        qpos_indices = []
+        for act in actuator_indices:
+            assert model.actuator_trntype[act] in [
                 mujoco.mjtTrn.mjTRN_JOINT,
                 mujoco.mjtTrn.mjTRN_JOINTINPARENT,
             ]
-            jnt_id = model.actuator_trnid[i, 0]
-            joint_indices.append(int(model.jnt_qposadr[jnt_id]))
-        return joint_indices
+            jnt_id = model.actuator_trnid[act, 0]
+            qpos_indices.append(int(model.jnt_qposadr[jnt_id]))
+        return qpos_indices
 
     def _build_mink_action(
         self,
         mink_cfg: MinkCfg,
-        actuator_indices: list[int],
-        joint_indices: list[int],
+        ctrl_indices: list[int],
+        qpos_indices: list[int],
         max_tstep: float,
         max_rstep: float,
     ) -> Callable[[WrapperActType], None]:
@@ -174,7 +178,7 @@ class MinkControllerAction(TaskSpaceControllerAction):
                 self._configuration.integrate_inplace(vel, dt)
                 if self._has_converged(pos_thr_sqr, ori_thr_sqr):
                     break
-            self.action_buffer[actuator_indices] = self._configuration.q[joint_indices]
+            self.action_buffer[ctrl_indices] = self._configuration.q[qpos_indices]
 
         return mink_action
 
@@ -211,9 +215,9 @@ class MinkControllerAction(TaskSpaceControllerAction):
 class MinkCfg:
     """Configuration for the mink tasks, IK solver, thresholds, etc."""
 
-    sites: tuple[str, ...] = ("hand-tcp",)
+    sites: tuple[str, ...] = ("gripper-tcp",)
     """Names of end-effector sites to control. A single site is expected per robot.
-    Default value is ("hand-tcp",)."""
+    Default value is ("gripper-tcp",)."""
 
     mocaps: tuple[str, ...] = ("mocap",)
     """Names of mocap bodies for target visualization. A single mocap is expected per robot.
