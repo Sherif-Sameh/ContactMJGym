@@ -1,13 +1,13 @@
 import mujoco
 
 
-def get_dof_dim_from_joints(model: mujoco.MjModel, qpos_adr: int, qpos_dim: int) -> int:
+def get_dof_dim_from_joints(model: mujoco.MjModel, qpos_adr: int, qpos_dim: int = 1) -> int:
     """Get the `dof` dimension of a set of joints according to their types.
 
     Args:
         model: MuJoCo model.
         qpos_adr: Start address in `qpos`.
-        qpos_dim: Dimension of `qpos` to consider.
+        qpos_dim: Dimension of `qpos` to consider. Default value is 1.
 
     Returns:
         `dof` dimension of the associated set of joints.

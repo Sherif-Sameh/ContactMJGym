@@ -1,51 +1,83 @@
 import time
+from typing import Callable
 
 import fire
 import gymnasium as gym
+import mujoco
 import numpy as np
+from numpy.typing import NDArray
 
 import contact_gym  # noqa: F401
+import contact_gym.controllers
+from contact_gym.controllers import ALL_CONTROLLERS
 
 INTERNAL_ENV_IDS = [
     env_id.split("/")[-1]
     for env_id, spec in gym.registry.items()
     if isinstance(spec.entry_point, str) and spec.entry_point.startswith("contact_gym.")
 ]
+CONTROLLER_REGISTRY = {
+    k: getattr(contact_gym.controllers, f"{k.title()}ControllerAction") for k in ALL_CONTROLLERS
+}
 
 
-def main(env_name: str, n_episodes: int = 5, seed: int = 0, kwargs: dict | None = None):
+def _build_action_fn(
+    act_scale: float, controller: str | None
+) -> Callable[[gym.Env, mujoco.MjData], NDArray]:
+    if controller is None:
+        return lambda env, data: data.ctrl + env.action_space.sample() * act_scale
+    return lambda env, _: env.action_space.sample() * act_scale
+
+
+def main(
+    env_name: str,
+    n_episodes: int = 10,
+    act_scale: float = 0.0,
+    seed: int = 0,
+    controller: str | None = None,
+    kwargs: dict | None = None,
+):
     """Measure steps/sec throughput of a registered MuJoCo gymnasium environment.
 
-    The environment is run with a fixed action (the initial `data.ctrl` after reset)
-    until the episode terminates/truncates, whichever comes first.
-
+    Actions are sampled randomly at each step from the action space, with the magnitude
+    of the random actions being determined the `act_scale` parameter.
+    
     Args:
         env_name: Registered gymnasium environment ID (e.g., "EdgeGrasp-v0").
-        n_episodes: Number of episodes to time. Default value is 5.
-        seed: Base seed; episode `i` is seeded with `seed + i`. Default value is 1.
-        kwargs: Optional extra kwargs forwarded to gym.make (e.g., '{"frame_skip": 10}').
+        n_episodes: Number of episodes to time. Default value is 10.
+        act_scale: Scale factor for random actions. Default value is 0.
+        seed: Base seed; episode `i` is seeded with `seed + i`. Default value is 0.
+        controller: Optional controller to wrap environment with. Default value is None.
+        kwargs: Optional extra kwargs forwarded to gym.make (e.g., '{"frame_skip": 20}').
 
     Usage:
         python measure_fps.py --env_name "EdgeGrasp-v0"
 
         python measure_fps.py \
             --env_name "EdgeGrasp-v0" \
-            --n_episodes 4 \
+            --n_episodes 5 \
+            --act_scale 0.05
             --seed 0 \
+            --controller mocap \
             --kwargs '{"frame_skip": 20}'
     """
     env_name = f"contact_gym/{env_name}" if env_name in INTERNAL_ENV_IDS else env_name
     kwargs = kwargs if kwargs else {}
     env = gym.make(env_name, **kwargs)
+    if controller is not None:
+        assert controller in CONTROLLER_REGISTRY
+        env = CONTROLLER_REGISTRY[controller](env)
     unwrapped = env.unwrapped
     assert hasattr(unwrapped, "model") and hasattr(unwrapped, "data"), (
         "Environment does not expose MuJoCo model and data structs."
     )
     env.reset(seed=seed)
     frame_skip = getattr(unwrapped, "frame_skip", 1)
-    action = unwrapped.data.ctrl.copy()
+    action_fn = _build_action_fn(act_scale, controller)
 
     print(f"Environment:    {env}")
+    print(f"Action scale:   {act_scale:.4f}")
+    print(f"Controller:     {controller}")
     print(f"Kwargs:         {kwargs}")
     print(f"Frame skip:     {frame_skip}")
     print("-" * 64)
@@ -56,6 +88,7 @@ def main(env_name: str, n_episodes: int = 5, seed: int = 0, kwargs: dict | None 
         env.reset(seed=seed + ep)
         elapsed, steps, done = 0, 0, False
         while not done:
+            action = action_fn(env, unwrapped.data)
             start = time.perf_counter_ns()
             _, _, terminated, truncated, _ = env.step(action)
             elapsed += time.perf_counter_ns() - start
