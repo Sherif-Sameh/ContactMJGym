@@ -30,7 +30,7 @@ class MujocoBaseEnv(ABC, gym.Env):
         renderer_kwargs: Optional kwargs to pass to :class:`mujoco.Renderer` for rendering.
     """
 
-    metadata = {"render_modes": ["rgb_array"]}  # noqa: RUF012
+    metadata = {"render_modes": ["rgb_array"], "render_fps": 50}  # noqa: RUF012
 
     def __init__(
         self,
@@ -50,6 +50,9 @@ class MujocoBaseEnv(ABC, gym.Env):
         self._renderer = (
             None if render_mode is None else mujoco.Renderer(self.model, **renderer_kwargs)
         )
+        self.metadata["render_fps"] = int(
+            np.round(1.0 / (self.model.opt.timestep * self.frame_skip))
+        )
         self._home_key_id = self._set_home_key()
         # Setup action space
         ctrl_low = self.model.actuator_ctrlrange[:, 0].astype(np.float32)
@@ -66,6 +69,7 @@ class MujocoBaseEnv(ABC, gym.Env):
         self, *, seed: int | None = None, options: dict[str, Any] | None = None
     ) -> tuple[ObsType, InfoType]:
         super().reset(seed=seed, options=options)
+        self.action_space.seed(seed=seed)
         mujoco.mj_resetDataKeyframe(self.model, self.data, self._home_key_id)
         self._reset_data()
         self._apply_options(options)
