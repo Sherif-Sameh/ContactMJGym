@@ -19,9 +19,9 @@ if TYPE_CHECKING:
 class MujocoBaseEnv(ABC, gym.Env):
     """Base MuJoCo-based environment.
 
-    Defines common environment `action_space`, `reset`, `step` and `render` logic. Extending
-    classes must provide `observation_space`, `_reset_data`, `_get_obs`, `_get_info` and
-    `_compute_reward` logic.
+    Defines common environment `action_space`, `reset`, `step`, `render` and `close` logic.
+    Extending classes must provide `observation_space`, `_reset_data`, `_get_obs`,
+    `_get_info` and `_compute_reward` logic.
 
     Args:
         spec: MuJoCo scene spec (MjSpec) to build model from.
@@ -94,6 +94,10 @@ class MujocoBaseEnv(ABC, gym.Env):
             self._renderer = mujoco.Renderer(self.model)
         self._renderer.update_scene(self.data, camera=camera)
         return self._renderer.render()
+
+    def close(self) -> None:
+        if self._renderer is not None:
+            self._renderer.close()
 
     # region Helpers
 

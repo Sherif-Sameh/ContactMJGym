@@ -146,7 +146,8 @@ class EdgeGraspEnv(MujocoBaseEnv):
         Called before `mujoco.mj_forward`.
         """
         # TODO: Update once domain randomization is implemented
-        self._rterms = EdgeGraspEnv.RewardTerms()
+        for f in fields(self._rterms):
+            setattr(self._rterms, f.name, 0.0)
 
     def _get_obs(self) -> ObsType:
         """Get the latest observations."""
