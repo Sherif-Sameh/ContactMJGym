@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Any, Callable, TypeAlias
 
 import gymnasium as gym
 import mujoco
@@ -15,7 +15,7 @@ from ..utils.mj_utils import filter_actuators
 if TYPE_CHECKING:
     from ..envs.mujoco_base import ActType
 
-    WrapperActType = ActType
+    WrapperActType: TypeAlias = ActType
 
 
 class TaskSpaceControllerAction(ABC, gym.ActionWrapper):

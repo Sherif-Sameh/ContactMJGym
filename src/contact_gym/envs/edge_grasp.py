@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, fields
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, TypeAlias
 
 import mujoco
 import numpy as np
@@ -17,7 +17,7 @@ if TYPE_CHECKING:
 
     from .mujoco_base import ActType, InfoType, ObsType
 
-    TupleNDArray6 = tuple[NDArray, NDArray, NDArray, NDArray, NDArray, NDArray]
+    TupleNDArray6: TypeAlias = tuple[NDArray, NDArray, NDArray, NDArray, NDArray, NDArray]
 
 
 class EdgeGraspEnv(MujocoBaseEnv):

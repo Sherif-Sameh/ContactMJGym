@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, TypeAlias
 
 import gymnasium as gym
 import mujoco
@@ -11,9 +11,10 @@ from gymnasium import spaces
 if TYPE_CHECKING:
     from numpy.typing import NDArray
 
-    ActType = ObsType = NDArray[np.float32]
-    InfoType = dict[str, Any]
-    RGBType = NDArray[np.uint8]
+    ActType: TypeAlias = NDArray[np.float32]
+    ObsType: TypeAlias = NDArray[np.float32]
+    InfoType: TypeAlias = dict[str, Any]
+    RGBType: TypeAlias = NDArray[np.uint8]
 
 
 class MujocoBaseEnv(ABC, gym.Env):
