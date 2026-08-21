@@ -14,6 +14,7 @@ if TYPE_CHECKING:
 
     SelectorType: TypeAlias = int | slice | Sequence[int] | NDArray[np.integer]
     ModelPostProc: TypeAlias = Callable[[mujoco.MjModel], None]
+    DataPostProc: TypeAlias = Callable[[mujoco.MjData], None]
 
 
 class DomainRandomizer(Protocol):
@@ -41,7 +42,7 @@ class ModelParamRandomizerCfg:
 
     inst_sel: SelectorType = slice(None)
     """Selector for instances of type (e.g., actuators, joints, etc.) whose parameters
-    should be randomized. Defaults to `slice(None)` (all instances).
+    should be randomized. Default value is `slice(None)` (all instances).
     """
 
     attr_sel: SelectorType | None = None
@@ -65,19 +66,15 @@ class ModelParamRandomizer:
 
     Args:
         cfg: Randomizer configuration, see :class:`ModelParamRandomizerCfg`.
-        model: Optional MuJoCo model. If not given, nominal values are lazily initialized
-            on the first call. Otherwise, they're initialized during construction.
-            Default value is None.
+        model: MuJoCo model for initializing parameter nominal values.
     """
 
     def __init__(self, cfg: ModelParamRandomizerCfg, model: mujoco.MjModel | None = None):
         self.cfg = cfg
         self.set_view = self._build_set_view()
-        self.nominal = None if model is None else self._get_nominal(model)
+        self.nominal = self._get_nominal(model)
 
     def __call__(self, model: mujoco.MjModel, _: mujoco.MjData, rng: np.random.Generator) -> None:
-        if self.nominal is None:
-            self.nominal = self._get_nominal(model)
         self.set_view(model, self.cfg.noise.sample(self.nominal, rng))
         self.cfg.post_proc(model)
 
@@ -105,3 +102,60 @@ class ModelParamRandomizer:
             f"Attribute selector must be specified for array parameter {self.cfg.attr}. Got None."
         )
         return nominal[self.cfg.inst_sel, self.cfg.attr_sel]
+
+
+# region DataState
+
+
+@dataclass(slots=True)
+class DataStateRandomizerCfg:
+    """Configuration for MjData state domain randomizer."""
+
+    noise: NoiseModel
+    """Noise model for sampling state values, see :class:`NoiseModel`."""
+
+    attr: str
+    """Name of attribute of MjData to randomize. (e.g., `qpos`)."""
+
+    entry_sel: SelectorType = slice(None)
+    """Selector for individual entries on state arrays. Default value is `slice(None)`
+    (all entries).
+    """
+
+    post_proc: DataPostProc | None = None
+    """Optional post-processor for data after parameter updates. Default value is None."""
+
+    def __post_init__(self):
+        if self.post_proc is None:
+
+            def do_nothing(_: mujoco.MjData): ...
+
+            self.post_proc = do_nothing
+
+
+class DataStateRandomizer:
+    """MjData state domain randomizer.
+
+    Args:
+        cfg: Randomizer configuration, see :class:`DataStateRandomizerCfg`.
+        data: Optional MuJoCo data. If not given, nominal values are lazily initialized
+            on the first call. Otherwise, they're initialized during construction.
+            Default value is None.
+    """
+
+    def __init__(self, cfg: DataStateRandomizerCfg, data: mujoco.MjData | None = None):
+        self.cfg = cfg
+        self.nominal = None if data is None else self._get_nominal(data)
+
+    def __call__(self, _: mujoco.MjModel, data: mujoco.MjData, rng: np.random.Generator) -> None:
+        if self.nominal is None:
+            self.nominal = self._get_nominal(data)
+        self.set_view(data, self.cfg.noise.sample(self.nominal, rng))
+        self.cfg.post_proc(data)
+
+    def set_view(self, data: mujoco.MjData, values: NDArray) -> None:
+        getattr(data, self.cfg.attr)[self.cfg.entry_sel] = values
+
+    def _get_nominal(self, data: mujoco.MjData) -> NDArray:
+        assert hasattr(data, self.cfg.attr), f"Data has no attribute named {self.cfg.attr}."
+        return getattr(data, self.cfg.attr)[self.cfg.entry_sel].copy()
