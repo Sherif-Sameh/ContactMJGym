@@ -2,11 +2,11 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-import mujoco
-
-from .base import ModelParamRandomizerCfg
+from .base import ModelParamRandomizerCfg, jnt_sel_to_dof_sel
 
 if TYPE_CHECKING:
+    import mujoco
+
     from ..utils.noise import NoiseModel
     from .base import ModelPostProc, SelectorType
 
@@ -49,7 +49,7 @@ def joint_dof_param_cfg(
 
     See :class:`ModelParamRandomizerCfg` for argument descriptions.
     """
-    dof_sel = _jnt_sel_to_dof_sel(model, jnt_sel)
+    dof_sel = jnt_sel_to_dof_sel(model, jnt_sel)
     return ModelParamRandomizerCfg(
         noise, attr=attr, inst_sel=dof_sel, attr_sel=attr_sel, post_proc=post_proc
     )
@@ -101,34 +101,3 @@ def joint_linear_damping_cfg(
     See :func:`joint_dof_param_cfg` for argument descriptions.
     """
     return joint_dof_param_cfg(model, "dof_damping", noise, jnt_sel, post_proc=post_proc)
-
-
-# region Helpers
-
-
-def _jnt_sel_to_dof_sel(model: mujoco.MjModel, jnt_sel: SelectorType) -> SelectorType:
-    if isinstance(jnt_sel, int):
-        dof_adr = model.jnt_dofadr[jnt_sel]
-        dof_dim = _get_joint_dof_dim(model.jnt_type[jnt_sel])
-        return dof_adr if dof_dim == 1 else slice(dof_adr, dof_adr + dof_dim)
-    if isinstance(jnt_sel, slice) and jnt_sel.step in [None, 1]:  # contiguous block
-        jnt_types = model.jnt_type[jnt_sel]
-        dof_adr = model.jnt_dofadr[0] if jnt_sel.start is None else model.jnt_dofadr[jnt_sel.start]
-        dof_dim = sum(_get_joint_dof_dim(jnt_type) for jnt_type in jnt_types)
-        return slice(dof_adr, dof_adr + dof_dim)
-    # Non-contiguous slice, sequence, or array of joints -> sequence of dofs
-    jnt_types = model.jnt_type[jnt_sel]
-    dof_adrs = model.jnt_dofadr[jnt_sel]
-    dof_dims = [_get_joint_dof_dim(jnt_type) for jnt_type in jnt_types]
-    return sum(
-        [tuple(range(dof_adr, dof_adr + dof_dim)) for dof_adr, dof_dim in zip(dof_adrs, dof_dims)],
-        start=(),
-    )
-
-
-def _get_joint_dof_dim(jnt_type: mujoco.mjtJoint) -> int:
-    if jnt_type == mujoco.mjtJoint.mjJNT_FREE:
-        return 6
-    if jnt_type == mujoco.mjtJoint.mjJNT_BALL:
-        return 3
-    return 1
