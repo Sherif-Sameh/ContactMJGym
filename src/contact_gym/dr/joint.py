@@ -8,14 +8,14 @@ if TYPE_CHECKING:
     import mujoco
 
     from ..utils.noise import NoiseModel
-    from .base import ModelPostProc, SelectorType
+    from .base import SelectorType
 
 
 # region jnt_ attributes
 
 
 def joint_linear_stiffness_cfg(
-    noise: NoiseModel, jnt_sel: SelectorType = slice(None), post_proc: ModelPostProc | None = None
+    noise: NoiseModel, jnt_sel: SelectorType = slice(None)
 ) -> ModelParamRandomizerCfg:
     """Factory for joint linear stiffness randomizer configuration.
 
@@ -24,9 +24,7 @@ def joint_linear_stiffness_cfg(
 
     See :class:`ModelParamRandomizerCfg` for argument descriptions.
     """
-    return ModelParamRandomizerCfg(
-        noise, attr="jnt_stiffness", inst_sel=jnt_sel, post_proc=post_proc
-    )
+    return ModelParamRandomizerCfg(noise, attr="jnt_stiffness", inst_sel=jnt_sel)
 
 
 # region dof_ attributes
@@ -38,7 +36,6 @@ def joint_dof_param_cfg(
     noise: NoiseModel,
     jnt_sel: SelectorType = slice(None),
     attr_sel: SelectorType | None = None,
-    post_proc: ModelPostProc | None = None,
 ) -> ModelParamRandomizerCfg:
     """Factory for joint per-DOF generic parameter randomizer configuration.
 
@@ -50,16 +47,11 @@ def joint_dof_param_cfg(
     See :class:`ModelParamRandomizerCfg` for argument descriptions.
     """
     dof_sel = jnt_sel_to_dof_sel(model, jnt_sel)
-    return ModelParamRandomizerCfg(
-        noise, attr=attr, inst_sel=dof_sel, attr_sel=attr_sel, post_proc=post_proc
-    )
+    return ModelParamRandomizerCfg(noise, attr=attr, inst_sel=dof_sel, attr_sel=attr_sel)
 
 
 def joint_frictionloss_cfg(
-    model: mujoco.MjModel,
-    noise: NoiseModel,
-    jnt_sel: SelectorType = slice(None),
-    post_proc: ModelPostProc | None = None,
+    model: mujoco.MjModel, noise: NoiseModel, jnt_sel: SelectorType = slice(None)
 ) -> ModelParamRandomizerCfg:
     """Factory for joint friction-loss randomizer configuration.
 
@@ -68,14 +60,11 @@ def joint_frictionloss_cfg(
 
     See :func:`joint_dof_param_cfg` for argument descriptions.
     """
-    return joint_dof_param_cfg(model, "dof_frictionloss", noise, jnt_sel, post_proc=post_proc)
+    return joint_dof_param_cfg(model, "dof_frictionloss", noise, jnt_sel)
 
 
 def joint_armature_cfg(
-    model: mujoco.MjModel,
-    noise: NoiseModel,
-    jnt_sel: SelectorType = slice(None),
-    post_proc: ModelPostProc | None = None,
+    model: mujoco.MjModel, noise: NoiseModel, jnt_sel: SelectorType = slice(None)
 ) -> ModelParamRandomizerCfg:
     """Factory for joint armature randomizer configuration.
 
@@ -84,14 +73,11 @@ def joint_armature_cfg(
 
     See :func:`joint_dof_param_cfg` for argument descriptions.
     """
-    return joint_dof_param_cfg(model, "dof_armature", noise, jnt_sel, post_proc=post_proc)
+    return joint_dof_param_cfg(model, "dof_armature", noise, jnt_sel)
 
 
 def joint_linear_damping_cfg(
-    model: mujoco.MjModel,
-    noise: NoiseModel,
-    jnt_sel: SelectorType = slice(None),
-    post_proc: ModelPostProc | None = None,
+    model: mujoco.MjModel, noise: NoiseModel, jnt_sel: SelectorType = slice(None)
 ) -> ModelParamRandomizerCfg:
     """Factory for joint linear damping randomizer configuration.
 
@@ -100,4 +86,4 @@ def joint_linear_damping_cfg(
 
     See :func:`joint_dof_param_cfg` for argument descriptions.
     """
-    return joint_dof_param_cfg(model, "dof_damping", noise, jnt_sel, post_proc=post_proc)
+    return joint_dof_param_cfg(model, "dof_damping", noise, jnt_sel)

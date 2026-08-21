@@ -8,24 +8,21 @@ if TYPE_CHECKING:
     import mujoco
 
     from ..utils.noise import NoiseModel
-    from .base import DataPostProc, SelectorType
+    from .base import SelectorType
 
 
 def qpos_state_cfg(
-    noise: NoiseModel, entry_sel: SelectorType = slice(None), post_proc: DataPostProc | None = None
+    noise: NoiseModel, entry_sel: SelectorType = slice(None)
 ) -> DataStateRandomizerCfg:
     """Factory for qpos state randomizer configuration.
 
     See :class:`DataStateRandomizerCfg` for argument descriptions.
     """
-    return DataStateRandomizerCfg(noise, attr="qpos", entry_sel=entry_sel, post_proc=post_proc)
+    return DataStateRandomizerCfg(noise, attr="qpos", entry_sel=entry_sel)
 
 
 def qpos_state_cfg_from_jnt_sel(
-    model: mujoco.MjModel,
-    noise: NoiseModel,
-    jnt_sel: SelectorType = slice(None),
-    post_proc: DataPostProc | None = None,
+    model: mujoco.MjModel, noise: NoiseModel, jnt_sel: SelectorType = slice(None)
 ) -> DataStateRandomizerCfg:
     """Factory for qpos state randomizer configuration.
 
@@ -34,24 +31,21 @@ def qpos_state_cfg_from_jnt_sel(
 
     See :class:`DataStateRandomizerCfg` for argument descriptions.
     """
-    return qpos_state_cfg(noise, entry_sel=jnt_sel_to_qpos_sel(model, jnt_sel), post_proc=post_proc)
+    return qpos_state_cfg(noise, entry_sel=jnt_sel_to_qpos_sel(model, jnt_sel))
 
 
 def qvel_state_cfg(
-    noise: NoiseModel, entry_sel: SelectorType = slice(None), post_proc: DataPostProc | None = None
+    noise: NoiseModel, entry_sel: SelectorType = slice(None)
 ) -> DataStateRandomizerCfg:
     """Factory for qvel state randomizer configuration.
 
     See :class:`DataStateRandomizerCfg` for argument descriptions.
     """
-    return DataStateRandomizerCfg(noise, attr="qvel", entry_sel=entry_sel, post_proc=post_proc)
+    return DataStateRandomizerCfg(noise, attr="qvel", entry_sel=entry_sel)
 
 
 def qvel_state_cfg_from_jnt_sel(
-    model: mujoco.MjModel,
-    noise: NoiseModel,
-    jnt_sel: SelectorType = slice(None),
-    post_proc: DataPostProc | None = None,
+    model: mujoco.MjModel, noise: NoiseModel, jnt_sel: SelectorType = slice(None)
 ) -> DataStateRandomizerCfg:
     """Factory for qvel state randomizer configuration.
 
@@ -60,4 +54,4 @@ def qvel_state_cfg_from_jnt_sel(
 
     See :class:`DataStateRandomizerCfg` for argument descriptions.
     """
-    return qvel_state_cfg(noise, entry_sel=jnt_sel_to_dof_sel(model, jnt_sel), post_proc=post_proc)
+    return qvel_state_cfg(noise, entry_sel=jnt_sel_to_dof_sel(model, jnt_sel))
