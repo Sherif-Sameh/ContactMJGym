@@ -12,7 +12,7 @@ if TYPE_CHECKING:
 
 
 def actuator_motor_gain_cfg(
-    noise: NoiseModel, inst_sel: SelectorType, post_proc: ModelPostProc | None = None
+    noise: NoiseModel, inst_sel: SelectorType = slice(None), post_proc: ModelPostProc | None = None
 ) -> ModelParamRandomizerCfg:
     """Factory for motor actuator `gainprm[0]` parameter randomizer configuration.
 
@@ -25,7 +25,7 @@ def actuator_motor_gain_cfg(
 
 
 def actuator_position_kp_cfg(
-    noise: NoiseModel, inst_sel: SelectorType, post_proc: ModelPostProc | None = None
+    noise: NoiseModel, inst_sel: SelectorType = slice(None), post_proc: ModelPostProc | None = None
 ) -> ModelParamRandomizerCfg:
     """Factory for position actuator `kp` parameter randomizer configuration.
 
@@ -52,7 +52,7 @@ def actuator_position_kp_cfg(
 
 
 def actuator_position_neg_kv_cfg(
-    noise: NoiseModel, inst_sel: SelectorType, post_proc: ModelPostProc | None = None
+    noise: NoiseModel, inst_sel: SelectorType = slice(None), post_proc: ModelPostProc | None = None
 ) -> ModelParamRandomizerCfg:
     """Factory for position actuator `-kv` parameter randomizer configuration.
 
@@ -69,7 +69,7 @@ def actuator_position_neg_kv_cfg(
 
 
 def actuator_linear_damping_cfg(
-    noise: NoiseModel, inst_sel: SelectorType, post_proc: ModelPostProc | None = None
+    noise: NoiseModel, inst_sel: SelectorType = slice(None), post_proc: ModelPostProc | None = None
 ) -> ModelParamRandomizerCfg:
     """Factory for actuator linear damping randomizer configuration.
 
@@ -81,7 +81,7 @@ def actuator_linear_damping_cfg(
 
 
 def actuator_armature_cfg(
-    noise: NoiseModel, inst_sel: SelectorType, post_proc: ModelPostProc | None = None
+    noise: NoiseModel, inst_sel: SelectorType = slice(None), post_proc: ModelPostProc | None = None
 ) -> ModelParamRandomizerCfg:
     """Factory for actuator armature randomizer configuration.
 

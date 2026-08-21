@@ -39,9 +39,9 @@ class ModelParamRandomizerCfg:
     attr: str
     """Name of attribute of MjModel to randomize. (e.g., `actuator_dynprm`)."""
 
-    inst_sel: SelectorType
+    inst_sel: SelectorType = slice(None)
     """Selector for instances of type (e.g., actuators, joints, etc.) whose parameters
-    should be randomized.
+    should be randomized. Defaults to `slice(None)` (all instances).
     """
 
     attr_sel: SelectorType | None = None

@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 
 
 def joint_linear_stiffness_cfg(
-    noise: NoiseModel, jnt_sel: SelectorType, post_proc: ModelPostProc | None = None
+    noise: NoiseModel, jnt_sel: SelectorType = slice(None), post_proc: ModelPostProc | None = None
 ) -> ModelParamRandomizerCfg:
     """Factory for joint linear stiffness randomizer configuration.
 
@@ -36,7 +36,7 @@ def joint_dof_param_cfg(
     model: mujoco.MjModel,
     attr: str,
     noise: NoiseModel,
-    jnt_sel: SelectorType,
+    jnt_sel: SelectorType = slice(None),
     attr_sel: SelectorType | None = None,
     post_proc: ModelPostProc | None = None,
 ) -> ModelParamRandomizerCfg:
@@ -58,7 +58,7 @@ def joint_dof_param_cfg(
 def joint_frictionloss_cfg(
     model: mujoco.MjModel,
     noise: NoiseModel,
-    jnt_sel: SelectorType,
+    jnt_sel: SelectorType = slice(None),
     post_proc: ModelPostProc | None = None,
 ) -> ModelParamRandomizerCfg:
     """Factory for joint friction-loss randomizer configuration.
@@ -74,7 +74,7 @@ def joint_frictionloss_cfg(
 def joint_armature_cfg(
     model: mujoco.MjModel,
     noise: NoiseModel,
-    jnt_sel: SelectorType,
+    jnt_sel: SelectorType = slice(None),
     post_proc: ModelPostProc | None = None,
 ) -> ModelParamRandomizerCfg:
     """Factory for joint armature randomizer configuration.
@@ -90,7 +90,7 @@ def joint_armature_cfg(
 def joint_linear_damping_cfg(
     model: mujoco.MjModel,
     noise: NoiseModel,
-    jnt_sel: SelectorType,
+    jnt_sel: SelectorType = slice(None),
     post_proc: ModelPostProc | None = None,
 ) -> ModelParamRandomizerCfg:
     """Factory for joint linear damping randomizer configuration.
