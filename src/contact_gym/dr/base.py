@@ -78,6 +78,8 @@ class ModelParamRandomizer:
         self.nominal = None if model is None else self._get_nominal(model)
 
     def __call__(self, model: mujoco.MjModel, _: mujoco.MjData, rng: np.random.Generator) -> None:
+        if self.nominal is None:
+            self.nominal = self._get_nominal(model)
         self.set_view(model, self.cfg.noise.sample(self.nominal, rng))
         self.cfg.post_proc(model)
 

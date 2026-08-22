@@ -72,11 +72,12 @@ def build_edge_grasp(
     # Load table and attach it
     TABLE_POS = (0, 0.5, 0.0)
     table_spec = mujoco.MjSpec.from_file(OBJECT_PATHS["table"])
-    site_pos = table_spec.site("topcenter").pos
+    table_site = table_spec.site("topcenter")
+    table_spec.delete(table_site)
     table_frame = scene_spec.worldbody.add_frame(pos=list(TABLE_POS))
     scene_spec.attach(table_spec, frame=table_frame, prefix="table-")
     # Load object and attach it
-    object_pos = [t + s for t, s in zip(TABLE_POS, site_pos)]
+    object_pos = [t + s for t, s in zip(TABLE_POS, table_site.pos)]
     object_spec = mujoco.MjSpec.from_file(OBJECT_PATHS[object])
     object_bodyname = templates.get_articulation_parent_bodyname(object_spec)
     object_frame = scene_spec.worldbody.add_frame(pos=object_pos)
