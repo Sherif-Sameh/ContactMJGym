@@ -67,13 +67,15 @@ class ModelParamRandomizer:
 
     Args:
         cfg: Randomizer configuration, see :class:`ModelParamRandomizerCfg`.
-        model: MuJoCo model for initializing parameter nominal values.
+        model: Optional MuJoCo model. If not given, nominal values are lazily initialized
+            on the first call. Otherwise, they're initialized during construction.
+            Default value is None.
     """
 
     def __init__(self, cfg: ModelParamRandomizerCfg, model: mujoco.MjModel | None = None):
         self.cfg = cfg
         self.set_view = self._build_set_view()
-        self.nominal = self._get_nominal(model)
+        self.nominal = None if model is None else self._get_nominal(model)
 
     def __call__(self, model: mujoco.MjModel, _: mujoco.MjData, rng: np.random.Generator) -> None:
         self.set_view(model, self.cfg.noise.sample(self.nominal, rng))

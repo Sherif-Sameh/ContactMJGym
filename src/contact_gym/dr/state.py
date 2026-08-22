@@ -16,6 +16,10 @@ def qpos_state_cfg(
 ) -> DataStateRandomizerCfg:
     """Factory for qpos state randomizer configuration.
 
+    Potential quaternions in qpos are not re-normalized after randomization. The
+    unit-norm constraint should be ensured by `noise` or by using code if qpos contains
+    any quaternions.
+
     See :class:`DataStateRandomizerCfg` for argument descriptions.
     """
     return DataStateRandomizerCfg(noise, attr="qpos", entry_sel=entry_sel)
@@ -28,6 +32,10 @@ def qpos_state_cfg_from_jnt_sel(
 
     `model` is required to map `jnt_sel` to `entry_sel` for qpos internally. `noise`
     should be configured with this conversion in mind for multi-DOF joints.
+
+    Potential quaternions in qpos are not re-normalized after randomization. The
+    unit-norm constraint should be ensured by `noise` or by using code if qpos contains
+    any quaternions.
 
     See :class:`DataStateRandomizerCfg` for argument descriptions.
     """
