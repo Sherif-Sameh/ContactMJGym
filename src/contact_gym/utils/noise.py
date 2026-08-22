@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+from functools import partial
 from typing import TYPE_CHECKING, Any, Callable, Literal, Protocol, TypeAlias
 
 import numpy as np
+from scipy.spatial.transform import Rotation as R
+
+from .transform import add_to_quat
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -29,20 +33,38 @@ class Noise:
     """Functional noise model combining a sampler with a fixed operation.
 
     The sampler generates the noise and the selected operation combines that noise with
-    the nominal value. The operation is resolved during construction.
+    the nominal value. The operation is resolved during construction. Supports vector,
+    SO(3) and SE(3) operations. For SO(3) and SE(3) operations, orientation noise is
+    assumed to be represented in the tangent space of the nominal orientation and is
+    combined through the exponential map of SO(3).
 
     Args:
         sampler: Noise sampler, following the :class:`Sampler` protocol.
         operation: Operation to combine noise with nominal value. Must be one of
-            ["add", "scale", "abs"]. Default value is "add".
+            ["add", "scale", "abs", "add_so3", "abs_so3", "add_se3", "abs_se3"].
+            Default value is "add".
+        scalar_first: Whether the scalar component goes first or last on quaternions.
+            Relevant only for SO(3) and SE(3) operations. Default value is False.
     """
 
-    def __init__(self, sampler: Sampler, operation: Literal["add", "scale", "abs"] = "add") -> None:
+    def __init__(
+        self,
+        sampler: Sampler,
+        operation: Literal[
+            "add", "scale", "abs", "add_so3", "abs_so3", "add_se3", "abs_se3"
+        ] = "add",
+        *,
+        scalar_first: bool = False,
+    ) -> None:
         assert operation in _OPERATIONS, (
             f"Unsupported operation {operation}. Expected one of {tuple(_OPERATIONS)}"
         )
         self.sampler = sampler
-        self.operation = _OPERATIONS[operation]
+        self.operation = (
+            _OPERATIONS[operation]
+            if operation in ["add", "scale", "abs"]
+            else partial(_OPERATIONS[operation], scalar_first=scalar_first)
+        )
 
     def sample(self, nominal: FloatArray, rng: np.random.Generator) -> FloatArray:
         """Sample noise and apply the configured operation to the nominal value."""
@@ -215,7 +237,37 @@ def _abs(_: FloatArray, noise: FloatArray) -> FloatArray:
     return noise
 
 
-_OPERATIONS: dict[str, Operation] = {"add": _add, "scale": _scale, "abs": _abs}
+def _add_so3(nominal: FloatArray, noise: FloatArray, *, scalar_first: bool = False) -> FloatArray:
+    return add_to_quat(nominal, noise, scalar_first=scalar_first)
+
+
+def _abs_so3(_: FloatArray, noise: FloatArray, *, scalar_first: bool = False) -> FloatArray:
+    return R.from_rotvec(noise).as_quat(scalar_first=scalar_first)
+
+
+def _add_se3(nominal: FloatArray, noise: FloatArray, *, scalar_first: bool = False) -> FloatArray:
+    out = np.empty_like(nominal)
+    out[..., :3] = nominal[..., :3] + noise[..., :3]
+    out[..., 3:] = _add_so3(nominal[..., 3:], noise[..., 3:], scalar_first=scalar_first)
+    return out
+
+
+def _abs_se3(nominal: FloatArray, noise: FloatArray, *, scalar_first: bool = False) -> FloatArray:
+    out = np.empty_like(nominal)
+    out[..., :3] = noise[..., :3]
+    out[..., 3:] = _abs_so3(nominal, noise[..., 3:], scalar_first=scalar_first)
+    return out
+
+
+_OPERATIONS: dict[str, Operation] = {
+    "add": _add,
+    "scale": _scale,
+    "abs": _abs,
+    "add_so3": _add_so3,
+    "abs_so3": _abs_so3,
+    "add_se3": _add_se3,
+    "abs_se3": _abs_se3,
+}
 
 
 def _as_float_array(value: ParamType, dtype: DTypeLike | None) -> FloatArray:
