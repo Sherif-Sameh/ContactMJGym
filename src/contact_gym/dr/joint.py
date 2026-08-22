@@ -15,43 +15,44 @@ if TYPE_CHECKING:
 
 
 def joint_linear_stiffness_cfg(
-    noise: NoiseModel, jnt_sel: SelectorType = slice(None)
+    noise: NoiseModel, inst_sel: SelectorType = slice(None)
 ) -> ModelParamRandomizerCfg:
     """Factory for joint linear stiffness randomizer configuration.
 
-    `jnt_sel` maps directly to `inst_sel` since attribute is defined per joint as `jnt_*`
+    `inst_sel` maps directly to `jnt_sel` since attribute is defined per joint as `jnt_*`
     arrays.
 
     See :class:`ModelParamRandomizerCfg` for argument descriptions.
     """
-    return ModelParamRandomizerCfg(noise, attr="jnt_stiffness", inst_sel=jnt_sel)
+    return ModelParamRandomizerCfg(noise, attr="jnt_stiffness", inst_sel=inst_sel)
 
 
 # region dof_ attributes
 
 
 def joint_dof_param_cfg(
-    model: mujoco.MjModel,
     attr: str,
     noise: NoiseModel,
-    jnt_sel: SelectorType = slice(None),
+    inst_sel: SelectorType = slice(None),
     attr_sel: SelectorType | None = None,
+    model: mujoco.MjModel | None = None,
 ) -> ModelParamRandomizerCfg:
     """Factory for joint per-DOF generic parameter randomizer configuration.
 
-    `model` is required to map `jnt_sel` to `dof_sel` internally since attribute is
-    defined per DOF as `dof_*` arrays. `dof_sel` is passed as `inst_sel` to randomizer
-    configuration. `noise` should be configured with this conversion in mind for
-    multi-DOF joints.
+    If `model` is given, `inst_sel` is assumed to correspond to `jnt_sel` and is mapped
+    to `dof_sel` internally, since attribute is defined per DOF as `dof_*` arrays. If not
+    given, then `inst_sel` is assumed to correspond to `dof_sel` directly. `noise` should
+    be configured with this conversion in mind for multi-DOF joints.
 
     See :class:`ModelParamRandomizerCfg` for argument descriptions.
     """
-    dof_sel = jnt_sel_to_dof_sel(model, jnt_sel)
-    return ModelParamRandomizerCfg(noise, attr=attr, inst_sel=dof_sel, attr_sel=attr_sel)
+    if model is not None:
+        inst_sel = jnt_sel_to_dof_sel(model, inst_sel)
+    return ModelParamRandomizerCfg(noise, attr=attr, inst_sel=inst_sel, attr_sel=attr_sel)
 
 
 def joint_frictionloss_cfg(
-    model: mujoco.MjModel, noise: NoiseModel, jnt_sel: SelectorType = slice(None)
+    noise: NoiseModel, inst_sel: SelectorType = slice(None), model: mujoco.MjModel | None = None
 ) -> ModelParamRandomizerCfg:
     """Factory for joint friction-loss randomizer configuration.
 
@@ -60,11 +61,11 @@ def joint_frictionloss_cfg(
 
     See :func:`joint_dof_param_cfg` for argument descriptions.
     """
-    return joint_dof_param_cfg(model, "dof_frictionloss", noise, jnt_sel)
+    return joint_dof_param_cfg("dof_frictionloss", noise, inst_sel, model=model)
 
 
 def joint_armature_cfg(
-    model: mujoco.MjModel, noise: NoiseModel, jnt_sel: SelectorType = slice(None)
+    noise: NoiseModel, inst_sel: SelectorType = slice(None), model: mujoco.MjModel | None = None
 ) -> ModelParamRandomizerCfg:
     """Factory for joint armature randomizer configuration.
 
@@ -73,11 +74,11 @@ def joint_armature_cfg(
 
     See :func:`joint_dof_param_cfg` for argument descriptions.
     """
-    return joint_dof_param_cfg(model, "dof_armature", noise, jnt_sel)
+    return joint_dof_param_cfg("dof_armature", noise, inst_sel, model=model)
 
 
 def joint_linear_damping_cfg(
-    model: mujoco.MjModel, noise: NoiseModel, jnt_sel: SelectorType = slice(None)
+    noise: NoiseModel, inst_sel: SelectorType = slice(None), model: mujoco.MjModel | None = None
 ) -> ModelParamRandomizerCfg:
     """Factory for joint linear damping randomizer configuration.
 
@@ -86,4 +87,4 @@ def joint_linear_damping_cfg(
 
     See :func:`joint_dof_param_cfg` for argument descriptions.
     """
-    return joint_dof_param_cfg(model, "dof_damping", noise, jnt_sel)
+    return joint_dof_param_cfg("dof_damping", noise, inst_sel, model=model)

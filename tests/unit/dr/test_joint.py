@@ -57,7 +57,7 @@ def test_joint_linear_stiffness_cfg(model, data, rng):
     nominal_stiffness = model.jnt_stiffness[hinge_id].copy()
 
     noise_value = 0.5
-    cfg = joint_linear_stiffness_cfg(_const_noise(noise_value), jnt_sel=hinge_id)
+    cfg = joint_linear_stiffness_cfg(_const_noise(noise_value), inst_sel=hinge_id)
     randomizer = ModelParamRandomizer(cfg, model)
 
     randomizer(model, data, rng)
@@ -79,7 +79,7 @@ def test_joint_frictionloss_cfg(model, data, rng):
     nominal_frictionloss = model.dof_frictionloss[dof_adr].copy()
 
     noise_value = 0.02
-    cfg = joint_frictionloss_cfg(model, _const_noise(noise_value), jnt_sel=hinge_id)
+    cfg = joint_frictionloss_cfg(_const_noise(noise_value), inst_sel=hinge_id, model=model)
     randomizer = ModelParamRandomizer(cfg, model)
 
     randomizer(model, data, rng)
@@ -100,7 +100,7 @@ def test_joint_armature_cfg(model, data, rng):
     nominal_armature = model.dof_armature[dof_adr].copy()
 
     noise_value = 0.005
-    cfg = joint_armature_cfg(model, _const_noise(noise_value), jnt_sel=hinge_id)
+    cfg = joint_armature_cfg(_const_noise(noise_value), inst_sel=hinge_id, model=model)
     randomizer = ModelParamRandomizer(cfg, model)
 
     randomizer(model, data, rng)
@@ -122,7 +122,7 @@ def test_joint_linear_damping_cfg(model, data, rng):
     nominal_damping = model.dof_damping[dof_slice].copy()
 
     noise_value = np.array([0.01, -0.02, 0.03])
-    cfg = joint_linear_damping_cfg(model, _const_noise(noise_value), jnt_sel=ball_id)
+    cfg = joint_linear_damping_cfg(_const_noise(noise_value), inst_sel=ball_id, model=model)
     randomizer = ModelParamRandomizer(cfg, model)
 
     randomizer(model, data, rng)
