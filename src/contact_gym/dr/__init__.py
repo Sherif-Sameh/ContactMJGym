@@ -1,3 +1,4 @@
+from . import actuator, body, geom, joint, state
 from .base import (
     DataStateRandomizer,
     DataStateRandomizerCfg,
@@ -9,6 +10,11 @@ from .base import (
 )
 
 __all__ = [
+    "actuator",
+    "body",
+    "geom",
+    "joint",
+    "state",
     "DataStateRandomizer",
     "DataStateRandomizerCfg",
     "DomainRandomizer",
