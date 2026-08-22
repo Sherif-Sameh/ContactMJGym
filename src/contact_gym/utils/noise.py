@@ -41,13 +41,13 @@ class Noise:
         assert operation in _OPERATIONS, (
             f"Unsupported operation {operation}. Expected one of {tuple(_OPERATIONS)}"
         )
-        self._sampler = sampler
-        self._operation = _OPERATIONS[operation]
+        self.sampler = sampler
+        self.operation = _OPERATIONS[operation]
 
     def sample(self, nominal: FloatArray, rng: np.random.Generator) -> FloatArray:
         """Sample noise and apply the configured operation to the nominal value."""
-        noise = self._sampler.sample(rng)
-        return self._operation(nominal, noise)
+        noise = self.sampler.sample(rng)
+        return self.operation(nominal, noise)
 
 
 # region Samplers
@@ -61,7 +61,7 @@ class Sampler(Protocol):
         ...
 
 
-class Constant:
+class ConstantSampler:
     """Sampler that always returns the configured constant value.
 
     Args:
@@ -73,14 +73,54 @@ class Constant:
 
     def __init__(self, value: ParamType, *, dtype: DTypeLike | None = None) -> None:
         assert dtype is None or np.issubdtype(dtype, np.floating)
-        self._value = _as_float_array(value, dtype)
+        self.value = _as_float_array(value, dtype)
 
     def sample(self, _: np.random.Generator) -> FloatArray:
         """Return the configured constant, ignoring the random generator."""
-        return self._value
+        return self.value.copy()
 
 
-class Uniform:
+class CategoricalSampler:
+    """Sampler that draws values from a configured set of categories with replacement.
+
+    Args:
+        categories: Values to sample from. The first axis represents the categories and
+            any remaining axes represent the shape of each sampled value.
+        probabilities: Optional probabilities for each category. If given, its length
+            must match the number of categories. Probabilities are normalized internally.
+            If None, all categories are sampled with equal probability. Default value is
+            None.
+        dtype: Optional datatype for sampler parameters. If None, the default dtype is
+            derived from the parameters if they're float arrays, otherwise it defaults
+            to `np.float64`. Default value is None.
+    """
+
+    def __init__(
+        self,
+        categories: ParamType,
+        probabilities: ParamType | None = None,
+        *,
+        dtype: DTypeLike | None = None,
+    ) -> None:
+        assert dtype is None or np.issubdtype(dtype, np.floating)
+        self.categories = _as_float_array(categories, dtype)
+        assert self.categories.ndim > 0, "categories must have at least one axis"
+        if probabilities is not None:
+            self.probabilities = _as_float_array(probabilities, dtype)
+            self.probabilities /= np.sum(self.probabilities)
+            assert self.probabilities.shape == self.categories.shape[:1], (
+                "Length of probabilities must match number of categories."
+            )
+            assert not np.any(self.probabilities < 0), "Probabilities must be non-negative."
+        else:
+            self.probabilities = None
+
+    def sample(self, rng: np.random.Generator) -> FloatArray:
+        """Draw a categorical sample using the supplied random-number generator."""
+        return rng.choice(self.categories, p=self.probabilities, axis=0)
+
+
+class UniformSampler:
     """Sampler for a uniform distribution over a closed parameter range.
 
     Args:
@@ -93,18 +133,18 @@ class Uniform:
 
     def __init__(self, min: ParamType, max: ParamType, *, dtype: DTypeLike | None = None) -> None:
         assert dtype is None or np.issubdtype(dtype, np.floating)
-        self._min = _as_float_array(min, dtype)
-        self._max = _as_float_array(max, dtype)
-        assert np.all(self._min <= self._max), (
-            f"min must be less than or equal to max. Got min {self._min} and max {self._max}."
+        self.min = _as_float_array(min, dtype)
+        self.max = _as_float_array(max, dtype)
+        assert np.all(self.min <= self.max), (
+            f"min must be less than or equal to max. Got min {self.min} and max {self.max}."
         )
 
     def sample(self, rng: np.random.Generator) -> FloatArray:
         """Draw a uniformly distributed sample."""
-        return rng.uniform(self._min, self._max)
+        return rng.uniform(self.min, self.max)
 
 
-class Gaussian:
+class GaussianSampler:
     """Sampler for a Gaussian distribution.
 
     Args:
@@ -119,16 +159,16 @@ class Gaussian:
         self, mean: ParamType = 0.0, std: ParamType = 1.0, *, dtype: DTypeLike | None = None
     ) -> None:
         assert dtype is None or np.issubdtype(dtype, np.floating)
-        self._mean = _as_float_array(mean, dtype)
-        self._std = _as_float_array(std, dtype)
-        assert np.all(self._std >= 0), f"std must be non-negative. Got std {self._std}."
+        self.mean = _as_float_array(mean, dtype)
+        self.std = _as_float_array(std, dtype)
+        assert np.all(self.std >= 0), f"std must be non-negative. Got std {self.std}."
 
     def sample(self, rng: np.random.Generator) -> FloatArray:
         """Draw a normally distributed sample."""
-        return rng.normal(self._mean, self._std)
+        return rng.normal(self.mean, self.std)
 
 
-class SquashedGaussian:
+class SquashedGaussianSampler:
     """Sampler for a squashed Gaussian distribution through tanh.
 
     Args:
@@ -149,15 +189,15 @@ class SquashedGaussian:
         dtype: DTypeLike | None = None,
     ) -> None:
         assert dtype is None or np.issubdtype(dtype, np.floating)
-        self._mean = _as_float_array(mean, dtype)
-        self._std = _as_float_array(std, dtype)
-        self._scale = _as_float_array(scale, dtype)
-        assert np.all(self._std >= 0), f"std must be non-negative. Got std {self._std}."
-        assert np.all(self._scale >= 0), f"scale must be non-negative. Got scale {self._scale}."
+        self.mean = _as_float_array(mean, dtype)
+        self.std = _as_float_array(std, dtype)
+        self.scale = _as_float_array(scale, dtype)
+        assert np.all(self.std >= 0), f"std must be non-negative. Got std {self.std}."
+        assert np.all(self.scale >= 0), f"scale must be non-negative. Got scale {self.scale}."
 
     def sample(self, rng: np.random.Generator) -> FloatArray:
         """Draw Gaussian noise and squash the result to the range [-`scale`, `scale`]."""
-        return self._scale * np.tanh(rng.normal(self._mean, self._std))
+        return self.scale * np.tanh(rng.normal(self.mean, self.std))
 
 
 # region Helpers
