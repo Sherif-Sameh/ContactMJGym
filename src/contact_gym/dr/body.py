@@ -34,7 +34,7 @@ def body_quat_cfg(
     """
 
     def normalize_quat(model: mujoco.MjModel) -> None:
-        norm = np.linalg.vector_norm(model.body_quat[inst_sel], axis=1, keepdims=True)
+        norm = np.linalg.vector_norm(model.body_quat[inst_sel], axis=-1, keepdims=True)
         model.body_quat[inst_sel] /= norm + 1e-8
 
     return ModelParamRandomizerCfg(
