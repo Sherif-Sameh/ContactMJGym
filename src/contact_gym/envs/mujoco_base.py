@@ -9,7 +9,11 @@ import numpy as np
 from gymnasium import spaces
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
+
     from numpy.typing import NDArray
+
+    from ..dr import DomainRandomizer
 
     ActType: TypeAlias = NDArray[np.float32]
     ObsType: TypeAlias = NDArray[np.float32]
@@ -27,6 +31,8 @@ class MujocoBaseEnv(ABC, gym.Env):
     Args:
         spec: MuJoCo scene spec (MjSpec) to build model from.
         frame_skip: Number of sim steps per env step. Default value is 10.
+        domain_randomizers: Sequence of domain randomizers to apply during environment
+            reset. See :class:`DomainRandomizer` for details. Default value is empty.
         render_mode: Environment rendering mode. Default value is None.
         renderer_kwargs: Optional kwargs to pass to :class:`mujoco.Renderer` for rendering.
     """
@@ -37,6 +43,7 @@ class MujocoBaseEnv(ABC, gym.Env):
         self,
         spec: mujoco.MjSpec,
         frame_skip: int = 10,
+        domain_randomizers: Sequence[DomainRandomizer] = (),
         render_mode: str | None = None,
         renderer_kwargs: dict[str, Any] = {},
     ):
@@ -46,7 +53,9 @@ class MujocoBaseEnv(ABC, gym.Env):
         )
         self.model = spec.compile()
         self.data = mujoco.MjData(self.model)
-        self._frame_skip = frame_skip
+        self.frame_skip = frame_skip
+        self.rng = np.random.default_rng()
+        self.domain_randomizers = domain_randomizers
         self.render_mode = render_mode
         self._renderer = (
             None if render_mode is None else mujoco.Renderer(self.model, **renderer_kwargs)
@@ -60,18 +69,18 @@ class MujocoBaseEnv(ABC, gym.Env):
         ctrl_high = self.model.actuator_ctrlrange[:, 1].astype(np.float32)
         self.action_space = spaces.Box(low=ctrl_low, high=ctrl_high, dtype=np.float32)
 
-    @property
-    def frame_skip(self) -> int:
-        return self._frame_skip
-
     # region Core API
 
     def reset(
         self, *, seed: int | None = None, options: dict[str, Any] | None = None
     ) -> tuple[ObsType, InfoType]:
         super().reset(seed=seed, options=options)
-        self.action_space.seed(seed=seed)
+        if seed is not None:
+            self.rng = np.random.default_rng(seed=seed)
+            self.action_space.seed(seed=seed)
         mujoco.mj_resetDataKeyframe(self.model, self.data, self._home_key_id)
+        for domain_randomizer in self.domain_randomizers:
+            domain_randomizer(self.model, self.data, self.rng)
         self._reset_data()
         self._apply_options(options)
         mujoco.mj_forward(self.model, self.data)
@@ -85,10 +94,10 @@ class MujocoBaseEnv(ABC, gym.Env):
         # https://github.com/google-deepmind/dm_control/blob/main/dm_control/mujoco/engine.py#L147
         if self.model.opt.integrator != mujoco.mjtIntegrator.mjINT_RK4:
             mujoco.mj_step2(self.model, self.data)
-            if self._frame_skip > 1:
-                mujoco.mj_step(self.model, self.data, self._frame_skip - 1)
+            if self.frame_skip > 1:
+                mujoco.mj_step(self.model, self.data, self.frame_skip - 1)
         else:
-            mujoco.mj_step(self.model, self.data, self._frame_skip)
+            mujoco.mj_step(self.model, self.data, self.frame_skip)
         mujoco.mj_step1(self.model, self.data)
         obs = self._get_obs()
         reward, terminated = self._compute_reward(obs, action)
@@ -108,9 +117,9 @@ class MujocoBaseEnv(ABC, gym.Env):
 
     @abstractmethod
     def _reset_data(self) -> None:
-        """Apply any additional resets to self.data after `mujoco.mj_resetData`.
+        """Apply any additional resets to self.data after environment reset.
 
-        Called before `mujoco.mj_forward`.
+        Called after `mujoco.mj_resetData` and domain randomization, before `mujoco.mj_forward`.
         """
 
     @abstractmethod
