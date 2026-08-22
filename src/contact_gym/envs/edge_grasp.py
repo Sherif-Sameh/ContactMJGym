@@ -13,8 +13,11 @@ from ..utils.mj_utils import get_dof_dim_from_joints
 from .mujoco_base import MujocoBaseEnv
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
+
     from numpy.typing import NDArray
 
+    from ..dr import DomainRandomizer
     from .mujoco_base import ActType, InfoType, ObsType
 
     TupleNDArray6: TypeAlias = tuple[NDArray, NDArray, NDArray, NDArray, NDArray, NDArray]
@@ -72,6 +75,8 @@ class EdgeGraspEnv(MujocoBaseEnv):
         object: Choice of object to grasp, see :func:`~..objects.ALL_OBJECTS` for options.
             Default is block.
         frame_skip: Number of sim steps per env step. Default value is 10.
+        domain_randomizers: Sequence of domain randomizers to apply during environment
+            reset. See :class:`DomainRandomizer` for details. Default value is empty.
         render_mode: Environment rendering mode. Default value is None.
         renderer_kwargs: Optional kwargs to pass to :class:`mujoco.Renderer` for rendering.
         rew_cfg: Reward function configuration. Determines thresholds, multipliers and reward
@@ -88,17 +93,19 @@ class EdgeGraspEnv(MujocoBaseEnv):
         obj_qpos_adr: int
         gri_dof_adr: int
         obj_dof_adr: int
+        table_body_id: int
         tcp_site_id: int
-        table_site_id: int
         tcp_vel_snsr_adr: int
         gri_con_snsr_adr: int
         rbt_con_snsr_adr: int
         table_height: float
         table_extent: float
+        obj_spawn_min: NDArray[np.float64]
+        obj_spawn_max: NDArray[np.float64]
 
         def __post_init__(self) -> None:
             for f in fields(self):
-                if f.type is float:
+                if f.type is not int:
                     continue
                 assert getattr(self, f.name) >= 0, f"{f.name} is invalid."
 
@@ -120,13 +127,14 @@ class EdgeGraspEnv(MujocoBaseEnv):
         gripper: str = "panda_hand",
         object: str = "block",
         frame_skip: int = 10,
+        domain_randomizers: Sequence[DomainRandomizer] = (),
         render_mode: str | None = None,
         renderer_kwargs: dict[str, Any] = {},
         rew_cfg: EdgeGraspRewardCfg | None = None,
         debug_info: bool = False,
     ):
         spec = build_edge_grasp(robot=robot, gripper=gripper, object=object)
-        super().__init__(spec, frame_skip, render_mode, renderer_kwargs)
+        super().__init__(spec, frame_skip, domain_randomizers, render_mode, renderer_kwargs)
         self._mdata = self._setup_model_data(robot, gripper)
         self._rcfg = EdgeGraspRewardCfg() if rew_cfg is None else rew_cfg
         self._rterms = EdgeGraspEnv.RewardTerms()
@@ -141,13 +149,25 @@ class EdgeGraspEnv(MujocoBaseEnv):
     # region Env API
 
     def _reset_data(self) -> None:
-        """Apply any additional resets to self.data after `mujoco.mj_resetData`.
+        """Apply any additional resets to self.data after environment reset.
 
-        Called before `mujoco.mj_forward`.
+        Called after `mujoco.mj_resetData` and domain randomization, before `mujoco.mj_forward`.
         """
-        # TODO: Update once domain randomization is implemented
-        for f in fields(self._rterms):
-            setattr(self._rterms, f.name, 0.0)
+        if not self.domain_randomizers:
+            return  # initial state guaranteed to be valid
+        # Get spawn range in world frame
+        table_pos = self.model.body_pos[self._mdata.table_body_id]
+        table_quat = self.model.body_quat[self._mdata.table_body_id]
+        obj_spawn_min, obj_spawn_max = np.split(np.empty(6, dtype=np.float64), 2)
+        mujoco.mju_rotVecQuat(obj_spawn_min, self._mdata.obj_spawn_min, table_quat)
+        mujoco.mju_rotVecQuat(obj_spawn_max, self._mdata.obj_spawn_max, table_quat)
+        # Ensure object spawns on the table and with a unit quaternion
+        # Note: assumes object is flat on the table (i.e. yaw randomization only)
+        adr = self._mdata.obj_qpos_adr
+        self.data.qpos[adr : adr + 3] = self.data.qpos[adr : adr + 3].clip(
+            table_pos + obj_spawn_min, table_pos + obj_spawn_max
+        )
+        mujoco.mju_normalize4(self.data.qpos[adr + 3 : adr + 7])
 
     def _get_obs(self) -> ObsType:
         """Get the latest observations."""
@@ -191,8 +211,8 @@ class EdgeGraspEnv(MujocoBaseEnv):
             tuple containing the reward and termination signals.
         """
         obj_pos, tcp_obj_pos = obs[12:15], obs[24:27]
-        table_pos = self.data.site_xpos[self._mdata.table_site_id]
-        obj_height_raw = obj_pos[2] - table_pos[2]
+        table_pos = self.data.xpos[self._mdata.table_body_id]
+        obj_height_raw = obj_pos[2] - self._mdata.table_height
 
         self._rterms.obj_dist = self._get_planar_dist_reward(obj_pos, table_pos, obj_height_raw)
         self._rterms.tcp_dist = self._get_tcp_dist_reward(tcp_obj_pos)
@@ -224,18 +244,24 @@ class EdgeGraspEnv(MujocoBaseEnv):
         rbt_dof_dim = get_dof_dim_from_joints(self.model, 0, rbt_qpos_dim)
         gri_dof_dim = get_dof_dim_from_joints(self.model, rbt_qpos_dim, gri_qpos_dim)
         table_geom = self.model.geom("table-tabletop")
+        table_height = float(table_geom.pos[2] + table_geom.size[2])
+        obj_geom_size = self.model.geom("object-geom").size
+        obj_geom_extent = max(obj_geom_size[:2]) if len(obj_geom_size) == 3 else obj_geom_size[0]
+        spawn_range_xy = [s - obj_geom_extent for s in table_geom.size[:2]]
         return EdgeGraspEnv.ModelData(
             gri_qpos_adr=rbt_qpos_dim,
             obj_qpos_adr=rbt_qpos_dim + gri_qpos_dim,
             gri_dof_adr=rbt_dof_dim,
             obj_dof_adr=rbt_dof_dim + gri_dof_dim,
+            table_body_id=self.model.body("table-table").id,
             tcp_site_id=self.model.site("gripper-tcp").id,
-            table_site_id=self.model.site("table-topcenter").id,
             tcp_vel_snsr_adr=self.model.sensor("tcp_linvel").adr[0],
             gri_con_snsr_adr=self.model.sensor("gripper_object_contact").adr[0],
             rbt_con_snsr_adr=self.model.sensor("robot_contact").adr[0],
-            table_height=float(table_geom.pos[2] + table_geom.size[2]),
+            table_height=table_height,
             table_extent=float(max(table_geom.size[:2])),
+            obj_spawn_min=np.array([-spawn_range_xy[0], -spawn_range_xy[1], table_height + 1e-3]),
+            obj_spawn_max=np.array([spawn_range_xy[0], spawn_range_xy[1], table_height + 1e-3]),
         )
 
     def _get_debug_info(self) -> InfoType:
