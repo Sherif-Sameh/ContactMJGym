@@ -53,6 +53,18 @@ def geom_sliding_torsional_friction_cfg(
     )
 
 
+def geom_friction_cfg(
+    noise: NoiseModel, inst_sel: SelectorType = slice(None)
+) -> ModelParamRandomizerCfg:
+    """Factory for full friction parameter randomizer configuration.
+
+    See :class:`ModelParamRandomizerCfg` for argument descriptions.
+    """
+    return ModelParamRandomizerCfg(
+        noise, attr="geom_friction", inst_sel=inst_sel, attr_sel=slice(3)
+    )
+
+
 def geom_surface_linvel_cfg(
     noise: NoiseModel, inst_sel: SelectorType = slice(None)
 ) -> ModelParamRandomizerCfg:
@@ -95,3 +107,13 @@ def geom_rgb_cfg(
     See :class:`ModelParamRandomizerCfg` for argument descriptions.
     """
     return ModelParamRandomizerCfg(noise, attr="geom_rgba", inst_sel=inst_sel, attr_sel=slice(3))
+
+
+def geom_rgba_cfg(
+    noise: NoiseModel, inst_sel: SelectorType = slice(None)
+) -> ModelParamRandomizerCfg:
+    """Factory for geom color + opacity parameter randomizer configuration.
+
+    See :class:`ModelParamRandomizerCfg` for argument descriptions.
+    """
+    return ModelParamRandomizerCfg(noise, attr="geom_rgba", inst_sel=inst_sel, attr_sel=slice(4))
