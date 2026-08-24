@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Any, Callable, ClassVar
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
-    import gymnasium
+    import gymnasium as gym
 
 
 class CurriculumTerm(ABC):
@@ -33,7 +33,7 @@ class CurriculumTerm(ABC):
         self.addrs = None
 
     @abstractmethod
-    def __call__(self, env: gymnasium.Env, step: int) -> dict[str, Any] | None:
+    def __call__(self, env: gym.Env, step: int) -> dict[str, Any] | None:
         """Update environment parameter values in place according to preset curriculum.
 
         Args:
@@ -45,7 +45,7 @@ class CurriculumTerm(ABC):
         """
         ...
 
-    def setup(self, env: gymnasium.Env) -> None:
+    def setup(self, env: gym.Env) -> None:
         """Cache the getters and setters for all managed path-based parameters."""
         self.addrs = [self._resolve_address(env, path) for path in self.paths]
 
