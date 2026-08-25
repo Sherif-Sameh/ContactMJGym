@@ -16,7 +16,7 @@ class CurriculumTerm(ABC):
 
     Args:
         paths: Sequence of dot-separated paths for target attributes
-            (e.g., "env.reward.weights[0]").
+            (e.g., "reward.weights[0]").
     """
 
     TOKEN_RE: ClassVar = re.compile(r"([^.\[\]]+)|\[(\d+)\]")
@@ -33,7 +33,7 @@ class CurriculumTerm(ABC):
         self.addrs = None
 
     @abstractmethod
-    def __call__(self, env: gym.Env, step: int) -> dict[str, Any] | None:
+    def __call__(self, env: gym.Env, step: int) -> dict[str, Any]:
         """Update environment parameter values in place according to preset curriculum.
 
         Args:
@@ -41,9 +41,9 @@ class CurriculumTerm(ABC):
             step: Current environment step number.
 
         Returns:
-            Optional dictionary of current parameters and their values.
+            Dictionary of current parameters and their values.
         """
-        ...
+        pass
 
     def setup(self, env: gym.Env) -> None:
         """Cache the getters and setters for all managed path-based parameters."""
@@ -57,7 +57,7 @@ class CurriculumTerm(ABC):
 
         Args:
             root: Root object of the given path, typically the environment.
-            path: Dot-separated path for target attribute (e.g., "env.reward.weights[0]").
+            path: Dot-separated path for target attribute (e.g., "reward.weights[0]").
 
         Returns:
             Path address with registered getter and setter.
@@ -76,8 +76,8 @@ class CurriculumTerm(ABC):
         """Tokenize path into names and indices.
 
         Examples:
-            >>> CurriculumTerm._tokenize("env.reward.weights[0]")
-            ["env", "reward", "weights", 0]
+            >>> CurriculumTerm._tokenize("reward.weights[0]")
+            ["reward", "weights", 0]
         """
         out: list[str | int] = []
         for name, idx in CurriculumTerm.TOKEN_RE.findall(path):
