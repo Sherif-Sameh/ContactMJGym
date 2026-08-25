@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, fields
+from dataclasses import dataclass, field, fields
 from typing import TYPE_CHECKING, Any, TypeAlias
 
 import mujoco
@@ -17,6 +17,7 @@ if TYPE_CHECKING:
 
     from numpy.typing import NDArray
 
+    from ..curriculum import CurriculumTerm
     from ..dr import DomainRandomizer
     from .mujoco_base import ActType, InfoType, ObsType
 
@@ -77,6 +78,8 @@ class EdgeGraspEnv(MujocoBaseEnv):
         frame_skip: Number of sim steps per env step. Default value is 10.
         domain_randomizers: Sequence of domain randomizers to apply during environment
             reset. See :class:`DomainRandomizer` for details. Default value is empty.
+        curriculum_terms: Sequence of curriculum terms to call during environment reset.
+            See :class:`CurriculumTerm` for details. Default value is empty.
         render_mode: Environment rendering mode. Default value is None.
         renderer_kwargs: Optional kwargs to pass to :class:`mujoco.Renderer` for rendering.
         rew_cfg: Reward function configuration. Determines thresholds, multipliers and reward
@@ -128,13 +131,16 @@ class EdgeGraspEnv(MujocoBaseEnv):
         object: str = "block",
         frame_skip: int = 10,
         domain_randomizers: Sequence[DomainRandomizer] = (),
+        curriculum_terms: Sequence[CurriculumTerm] = (),
         render_mode: str | None = None,
         renderer_kwargs: dict[str, Any] = {},
         rew_cfg: EdgeGraspRewardCfg | None = None,
         debug_info: bool = False,
     ):
         spec = build_edge_grasp(robot=robot, gripper=gripper, object=object)
-        super().__init__(spec, frame_skip, domain_randomizers, render_mode, renderer_kwargs)
+        super().__init__(
+            spec, frame_skip, domain_randomizers, curriculum_terms, render_mode, renderer_kwargs
+        )
         self._mdata = self._setup_model_data(robot, gripper)
         self._rcfg = EdgeGraspRewardCfg() if rew_cfg is None else rew_cfg
         self._rterms = EdgeGraspEnv.RewardTerms()
@@ -361,7 +367,7 @@ class EdgeGraspEnv(MujocoBaseEnv):
 # region RewardCfg
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(slots=True)
 class EdgeGraspRewardCfg:
     """Reward function configuration for the EdgeGrasp environment."""
 
@@ -386,7 +392,7 @@ class EdgeGraspRewardCfg:
     height_mult: float = 2.0
     """Multiplier for object height before applying tanh() for reward term. Default value is 2."""
 
-    @dataclass(frozen=True, slots=True)
+    @dataclass(slots=True)
     class Weights:
         """Weights for the individual reward terms."""
 
@@ -411,4 +417,4 @@ class EdgeGraspRewardCfg:
         fail: float = -3.0
         """Weight for failure/termination reward term. Default value is -3."""
 
-    weights: Weights = Weights()
+    weights: Weights = field(default_factory=Weights)
