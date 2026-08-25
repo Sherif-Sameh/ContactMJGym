@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import logging
 from abc import ABC, abstractmethod
+from collections import ChainMap
 from typing import TYPE_CHECKING, Any, TypeAlias
 
 import gymnasium as gym
@@ -13,12 +15,15 @@ if TYPE_CHECKING:
 
     from numpy.typing import NDArray
 
+    from ..curriculum import CurriculumTerm
     from ..dr import DomainRandomizer
 
     ActType: TypeAlias = NDArray[np.float32]
     ObsType: TypeAlias = NDArray[np.float32]
     InfoType: TypeAlias = dict[str, Any]
     RGBType: TypeAlias = NDArray[np.uint8]
+
+logger = logging.getLogger(__name__)
 
 
 class MujocoBaseEnv(ABC, gym.Env):
@@ -33,6 +38,8 @@ class MujocoBaseEnv(ABC, gym.Env):
         frame_skip: Number of sim steps per env step. Default value is 10.
         domain_randomizers: Sequence of domain randomizers to apply during environment
             reset. See :class:`DomainRandomizer` for details. Default value is empty.
+        curriculum_terms: Sequence of curriculum terms to call during environment reset.
+            See :class:`CurriculumTerm` for details. Default value is empty.
         render_mode: Environment rendering mode. Default value is None.
         renderer_kwargs: Optional kwargs to pass to :class:`mujoco.Renderer` for rendering.
     """
@@ -44,6 +51,7 @@ class MujocoBaseEnv(ABC, gym.Env):
         spec: mujoco.MjSpec,
         frame_skip: int = 10,
         domain_randomizers: Sequence[DomainRandomizer] = (),
+        curriculum_terms: Sequence[CurriculumTerm] = (),
         render_mode: str | None = None,
         renderer_kwargs: dict[str, Any] = {},
     ):
@@ -51,11 +59,13 @@ class MujocoBaseEnv(ABC, gym.Env):
         assert render_mode is None or render_mode in self.metadata["render_modes"], (
             f"Invalid rendering mode {render_mode}. Must be in {self.metadata['render_modes']}."
         )
+        self.step_count = 0
         self.model = spec.compile()
         self.data = mujoco.MjData(self.model)
         self.frame_skip = frame_skip
         self.rng = np.random.default_rng()
         self.domain_randomizers = domain_randomizers
+        self.curriculum_terms = curriculum_terms
         self.render_mode = render_mode
         self._renderer = (
             None if render_mode is None else mujoco.Renderer(self.model, **renderer_kwargs)
@@ -79,6 +89,11 @@ class MujocoBaseEnv(ABC, gym.Env):
             self.rng = np.random.default_rng(seed=seed)
             self.action_space.seed(seed=seed)
         mujoco.mj_resetDataKeyframe(self.model, self.data, self._home_key_id)
+        param_dicts = [c_term(self, self.step_count) for c_term in self.curriculum_terms]
+        if logger.isEnabledFor(logging.INFO):
+            logger.info(
+                f"Step: {self.step_count}\nCurriculum Parameters: {dict(ChainMap(*param_dicts))}"
+            )
         for domain_randomizer in self.domain_randomizers:
             domain_randomizer(self.model, self.data, self.rng)
         self._reset_data()
@@ -87,6 +102,7 @@ class MujocoBaseEnv(ABC, gym.Env):
         return self._get_obs(), self._get_info()
 
     def step(self, action: ActType) -> tuple[ObsType, float, bool, bool, InfoType]:
+        self.step_count += 1
         # Apply action in environment
         action = np.clip(action, self.action_space.low, self.action_space.high)
         self.data.ctrl[:] = action
