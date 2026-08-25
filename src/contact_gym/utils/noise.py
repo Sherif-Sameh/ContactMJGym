@@ -95,11 +95,11 @@ class ConstantSampler:
 
     def __init__(self, value: ParamType, *, dtype: DTypeLike | None = None) -> None:
         assert dtype is None or np.issubdtype(dtype, np.floating)
-        self.value = _as_float_array(value, dtype)
+        self.value = value if isinstance(value, float) else _as_float_array(value, dtype)
 
     def sample(self, _: np.random.Generator) -> FloatArray:
         """Return the configured constant, ignoring the random generator."""
-        return self.value.copy()
+        return self.value if isinstance(self.value, float) else self.value.copy()
 
 
 class CategoricalSampler:
@@ -155,8 +155,8 @@ class UniformSampler:
 
     def __init__(self, min: ParamType, max: ParamType, *, dtype: DTypeLike | None = None) -> None:
         assert dtype is None or np.issubdtype(dtype, np.floating)
-        self.min = _as_float_array(min, dtype)
-        self.max = _as_float_array(max, dtype)
+        self.min = min if isinstance(min, float) else _as_float_array(min, dtype)
+        self.max = max if isinstance(max, float) else _as_float_array(max, dtype)
         assert np.all(self.min <= self.max), (
             f"min must be less than or equal to max. Got min {self.min} and max {self.max}."
         )
@@ -181,8 +181,8 @@ class GaussianSampler:
         self, mean: ParamType = 0.0, std: ParamType = 1.0, *, dtype: DTypeLike | None = None
     ) -> None:
         assert dtype is None or np.issubdtype(dtype, np.floating)
-        self.mean = _as_float_array(mean, dtype)
-        self.std = _as_float_array(std, dtype)
+        self.mean = mean if isinstance(mean, float) else _as_float_array(mean, dtype)
+        self.std = std if isinstance(std, float) else _as_float_array(std, dtype)
         assert np.all(self.std >= 0), f"std must be non-negative. Got std {self.std}."
 
     def sample(self, rng: np.random.Generator) -> FloatArray:
@@ -211,9 +211,9 @@ class SquashedGaussianSampler:
         dtype: DTypeLike | None = None,
     ) -> None:
         assert dtype is None or np.issubdtype(dtype, np.floating)
-        self.mean = _as_float_array(mean, dtype)
-        self.std = _as_float_array(std, dtype)
-        self.scale = _as_float_array(scale, dtype)
+        self.mean = mean if isinstance(mean, float) else _as_float_array(mean, dtype)
+        self.std = std if isinstance(std, float) else _as_float_array(std, dtype)
+        self.scale = scale if isinstance(scale, float) else _as_float_array(scale, dtype)
         assert np.all(self.std >= 0), f"std must be non-negative. Got std {self.std}."
         assert np.all(self.scale >= 0), f"scale must be non-negative. Got scale {self.scale}."
 
