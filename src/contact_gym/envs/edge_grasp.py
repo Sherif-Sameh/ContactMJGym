@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field, fields
-from typing import TYPE_CHECKING, Any, TypeAlias
+from dataclasses import asdict, dataclass, field, fields
+from typing import TYPE_CHECKING, Any, Literal
 
 import mujoco
 import numpy as np
@@ -19,25 +19,109 @@ if TYPE_CHECKING:
 
     from ..curriculum import CurriculumTerm
     from ..dr import DomainRandomizer
-    from .mujoco_base import ActType, InfoType, ObsType
+    from .mujoco_base import BoolArray, FloatArray, GoalType, InfoType, ObsType
 
-    TupleNDArray6: TypeAlias = tuple[NDArray, NDArray, NDArray, NDArray, NDArray, NDArray]
+# region RewardCfg
+
+
+@dataclass(slots=True)
+class EdgeGraspEnvCfg:
+    """EdgeGrasp environment configuration for scene, task and reward."""
+
+    @dataclass(frozen=True)
+    class SceneCfg:
+        """Environment scene/spec configuration."""
+
+        robot: str = "panda"
+        """Robot manipulator, see :func:`~..robots.ALL_ROBOTS` for options.
+        Default value is panda."""
+
+        gripper: str = "panda_hand"
+        """Robot gripper, see :func:`~..robots.ALL_GRIPPERS` for options.
+        Default value is panda_hand."""
+
+        object: str = "block"
+        """Object to grasp, see :func:`~..objects.ALL_OBJECTS` for options.
+        Default is block."""
+
+    scene_cfg: SceneCfg = SceneCfg()
+
+    @dataclass(slots=True)
+    class TaskCfg:
+        """Environment task configuration."""
+
+        high_goal_prob: float = 0.5
+        """Probability of sampling high goals above the table [0, 1]. Default value is 0.5."""
+
+        height_max: float = 0.5
+        """Maximum height for high goals above the table. Default value is 0.5."""
+
+        height_min: float = 0.1
+        """Minimum height for high goals above the table. Default value is 0.1."""
+
+        goal_tol: float = 0.025
+        """Tolerance for object goal position. Default value is 0.025."""
+
+        lift_tol: float = 0.025
+        """Object-table distance dense reward term is swapped for object-target distance if
+        object is lifted above `lift_tol`. Default value is 0.025."""
+
+        col_tol: float = 10.0
+        """Termination due to robot collision is triggered if the max collision force exceeds
+        `col_tol`. Default value is 10."""
+
+        fall_tol: float = 0.02
+        """Termination due to object falling is triggered if object falls below the table by
+        more than `fall_tol`. Defautl value is 0.02."""
+
+        dist_mult: float = 2.5
+        """Multiplier for object-table distance before applying tanh() for dense reward.
+        Default value is 2.5."""
+
+    task_cfg: TaskCfg = field(default_factory=TaskCfg)
+
+    @dataclass(slots=True)
+    class Weights:
+        """Weights for the individual dense reward terms."""
+
+        tgt_dist: float = -0.45
+        """Weight for the object-target distance reward term. Default value is -0.45."""
+
+        tbl_dist: float = 0.3
+        """Weight for the object-table center distance reward term. Default value is 0.3."""
+
+        tcp_dist: float = -0.15
+        """Weight for the tcp-object distance reward term. Default value is -0.15."""
+
+        con: float = 0.1
+        """Weight for the gripper-object contact reward term. Default value is 0.1."""
+
+        qvel_l2: float = -5e-3
+        """Weight for the joint velocity squared L2 reward term. Default value is -5e-3."""
+
+        qfrc_l2: float = -5e-3
+        """Weight for the joint force squared L2 reward term. Default value is -5e-3."""
+
+        fail: float = -3.0
+        """Weight for failure/termination reward term. Default value is -3."""
+
+    weights: Weights = field(default_factory=Weights)
 
 
 class EdgeGraspEnv(MujocoBaseEnv):
     """MuJoCo-based edge grasp environment.
 
     The environment is setup with an object that cannot be picked up when laying
-    completely flush on the table. Therefore, to grasp and lift it, the robot must first
-    push it towards the edge of the table, then pick it up.
+    completely flush on the table. Therefore, for goals that require lifting the object,
+    the robot must first push it towards the edge of the table, then pick it up.
 
-    **Observation space**
+    **Observations**
 
-    A single vector of length `54 + 2 * `gripper_dof`, built by concatenating the
-    following blocks in order. Positions/linear velocities are world-frame; rotation
-    matrices are row-major flattened (3, 3) -> (9,); angular velocities are local to the
-    frame of the body they describe (TCP-local for the TCP, object-local for the object
-    and for the relative twist).
+    A vector of length 54 + 2 * `gripper_dof`, built by concatenating the following
+    blocks in order. Positions/linear velocities are world-frame; rotation matrices are
+    row-major flattened (3, 3) -> (9,); angular velocities are local to the frame of the
+    body they describe (TCP-local for the TCP, object-local for the object and for the
+    relative twist).
 
     - TCP pose: `tcp_pos` (3), `tcp_rmat` (9)
     - Object pose: `obj_pos` (3), `obj_rmat` (9)
@@ -48,44 +132,47 @@ class EdgeGraspEnv(MujocoBaseEnv):
     - Object twist relative to TCP: `tcp_obj_vel` (3), `tcp_obj_omega` (3)
     - Gripper velocities: `gri_vel` (`gripper_dof`)
 
+    **Goals**
+
+    A vector of length 4, containing the object's position in the world frame with an
+    additional flag indicating whether the object is laying on the table (0) or lifted
+    above it (1). Goals that require lifting are sampled with a probability `high_goal_prob`.
+
     **Reward**
 
-    The reward is a weighted sum of four dense guidance terms, two smoothness/effort
-    regularization terms, and one sparse failure penalty:
+    The reward is a weighted sum of a goal guidance term, two smoothness/effort
+    regularization terms, and one sparse failure penalty. In the sparse case, the
+    guidance term is determined only by the error in the object's position. In the dense
+    scenario, the guidance term is itself made up of four separate terms, so that the
+    full dense reward is:
 
-    1. Planar object distance from the table center (maximized while the object is still
-       flush on the table). Encourages pushing the object towards an edge so it can later
-       be grasped. Disabled once the object lifts off the table more than `lift_tol`.
-    2. TCP-to-object distance (minimized). Encourages the gripper to approach the object.
-    3. Gripper-object contact (maximized). Encourages establishing and maintaining contact.
-    4. Object height above the table (maximized, up to `tgt_height`). Encourages lifting
-       the object once it is graspable.
+    1. Object-to-target distance (minimized). Activated for targets that require lifting
+       after their height exceeds `lift_tol` above the table.
+    2. Planar object distance from the table center (maximized). Disabled for table
+       targets and once the object lifts off the table by more than `lift_tol`.
+    3. TCP-to-object distance (minimized). Encourages the gripper to approach the object.
+    4. Gripper-object contact (maximized). Encourages establishing and maintaining contact.
     5. Squared L2 norm of robot joint velocities (minimized). Penalizes jerky motion.
     6. Squared L2 norm of robot joint torques (minimized). Penalizes excessive actuation effort.
     7. Failure penalty. A sparse penalty triggered by heavy robot/gripper collision
        forces exceeding `col_tol` or the object falling off the table by `fall_tol`;
        also terminates the episode.
 
-    Joint-based terms (5, 6) apply to the robot arm joints only, excluding the gripper.
+    Terms 5-7 are independent of the goal and are applied identically regardless of
+    `reward_type`; only the guidance term (1-4 when dense, or the single distance
+    threshold when sparse) changes between reward types. Joint-based terms (5, 6) apply
+    to the robot arm joints only, excluding the gripper.
 
     Args:
-        robot: Choice of robot manipulator, see :func:`~..robots.ALL_ROBOTS` for options.
-            Default is panda.
-        gripper: Choice of gripper, see :func:`~..robots.ALL_GRIPPERS` for options.
-            Default is panda_hand.
-        object: Choice of object to grasp, see :func:`~..objects.ALL_OBJECTS` for options.
-            Default is block.
+        cfg: Configuration for scene, task and reward, see :class:`EdgeGraspEnvCfg`.
         frame_skip: Number of sim steps per env step. Default value is 10.
+        reward_type: Reward type, one of ["dense", "sparse"]. Default value is sparse.
         domain_randomizers: Sequence of domain randomizers to apply during environment
             reset. See :class:`DomainRandomizer` for details. Default value is empty.
         curriculum_terms: Sequence of curriculum terms to call during environment reset.
             See :class:`CurriculumTerm` for details. Default value is empty.
         render_mode: Environment rendering mode. Default value is None.
         renderer_kwargs: Optional kwargs to pass to :class:`mujoco.Renderer` for rendering.
-        rew_cfg: Reward function configuration. Determines thresholds, multipliers and reward
-            weights. If None, default values are used. Default value is None.
-        debug_info: If True, the info dict contains the raw values of each reward term. Otherwise,
-            an empty dict is returned for info. Default value is False.
     """
 
     @dataclass(frozen=True, slots=True)
@@ -112,45 +199,67 @@ class EdgeGraspEnv(MujocoBaseEnv):
                     continue
                 assert getattr(self, f.name) >= 0, f"{f.name} is invalid."
 
-    @dataclass(slots=True)
-    class RewardTerms:
-        """Individual reward terms computed by the environment."""
-
-        obj_dist: float = 0.0
-        tcp_dist: float = 0.0
-        height: float = 0.0
-        con: float = 0.0
-        qvel_l2: float = 0.0
-        qfrc_l2: float = 0.0
-        fail: float = 0.0
-
     def __init__(
         self,
-        robot: str = "panda",
-        gripper: str = "panda_hand",
-        object: str = "block",
+        cfg: EdgeGraspEnvCfg = EdgeGraspEnvCfg(),
         frame_skip: int = 10,
+        reward_type: Literal["dense", "sparse"] = "sparse",
         domain_randomizers: Sequence[DomainRandomizer] = (),
         curriculum_terms: Sequence[CurriculumTerm] = (),
         render_mode: str | None = None,
         renderer_kwargs: dict[str, Any] = {},
-        rew_cfg: EdgeGraspRewardCfg | None = None,
-        debug_info: bool = False,
     ):
-        spec = build_edge_grasp(robot=robot, gripper=gripper, object=object)
+        spec = build_edge_grasp(**asdict(cfg.scene_cfg))
         super().__init__(
-            spec, frame_skip, domain_randomizers, curriculum_terms, render_mode, renderer_kwargs
+            spec=spec,
+            frame_skip=frame_skip,
+            reward_type=reward_type,
+            domain_randomizers=domain_randomizers,
+            curriculum_terms=curriculum_terms,
+            render_mode=render_mode,
+            renderer_kwargs=renderer_kwargs,
         )
-        self._mdata = self._setup_model_data(robot, gripper)
-        self._rcfg = EdgeGraspRewardCfg() if rew_cfg is None else rew_cfg
-        self._rterms = EdgeGraspEnv.RewardTerms()
+        self.cfg = cfg
+        self._mdata = self._setup_model_data(cfg.scene_cfg.robot, cfg.scene_cfg.gripper)
+        self._desired_goal = np.zeros(4, dtype=np.float32)
         # Setup observation space
-        nobs = 12 * 3 + 6 * 3 + get_qpos_dim(gripper) * 2
-        self.observation_space = spaces.Box(
-            low=-np.inf, high=np.inf, shape=(nobs,), dtype=np.float32
+        nobs = 12 * 3 + 6 * 3 + get_qpos_dim(cfg.scene_cfg.gripper) * 2
+        self.observation_space = spaces.Dict(
+            {
+                "observation": spaces.Box(
+                    low=-np.inf, high=np.inf, shape=(nobs,), dtype=np.float32
+                ),
+                "achieved_goal": spaces.Box(low=-np.inf, high=np.inf, shape=(4,), dtype=np.float32),
+                "desired_goal": spaces.Box(low=-np.inf, high=np.inf, shape=(4,), dtype=np.float32),
+            }
         )
-        # Setup info function
-        self._get_info_fn = self._get_debug_info if debug_info else (lambda: {})
+
+    # region Goal API
+
+    def compute_reward(
+        self, achieved_goal: GoalType, desired_goal: GoalType, info: InfoType
+    ) -> np.float32 | FloatArray:
+        """Compute task reward for achieved and desired goals. Must support batched inputs."""
+        tgt_dist = self._norm(achieved_goal[..., :3] - desired_goal[..., :3])
+        if self.reward_type == "sparse":
+            guidance_rew = -(tgt_dist > self.cfg.task_cfg.goal_tol).astype(np.float32)
+        else:
+            tgt_flag = desired_goal[..., 3]
+            obj_height_raw = achieved_goal[..., 2] - self._mdata.table_height
+            tgt_rew = self._get_target_dist_reward(tgt_dist, tgt_flag, obj_height_raw)
+            tbl_rew = self._get_table_dist_reward(achieved_goal[..., :3], tgt_flag, obj_height_raw)
+            guidance_rew = (
+                self.cfg.weights.tgt_dist * tgt_rew
+                + self.cfg.weights.tbl_dist * tbl_rew
+                + info["state_rew"]
+            )
+        return guidance_rew + info["reg_rew"]
+
+    def compute_terminated(
+        self, achieved_goal: GoalType, desired_goal: GoalType, info: InfoType
+    ) -> np.bool_ | BoolArray:
+        """Compute terminated signal for acheived and desired goals. Must support batched inputs."""
+        return info["terminated"]  # termination is goal independent
 
     # region Env API
 
@@ -161,19 +270,25 @@ class EdgeGraspEnv(MujocoBaseEnv):
         """
         if not self.domain_randomizers:
             return  # initial state guaranteed to be valid
-        # Get spawn range in world frame
-        table_pos = self.model.body_pos[self._mdata.table_body_id]
-        table_quat = self.model.body_quat[self._mdata.table_body_id]
-        obj_spawn_min, obj_spawn_max = np.split(np.empty(6, dtype=np.float64), 2)
-        mujoco.mju_rotVecQuat(obj_spawn_min, self._mdata.obj_spawn_min, table_quat)
-        mujoco.mju_rotVecQuat(obj_spawn_max, self._mdata.obj_spawn_max, table_quat)
+        spawn_min, spawn_max = self._get_world_spawn_range()
         # Ensure object spawns on the table and with a unit quaternion
         # Note: assumes object is flat on the table (i.e. yaw randomization only)
         adr = self._mdata.obj_qpos_adr
-        self.data.qpos[adr : adr + 3] = self.data.qpos[adr : adr + 3].clip(
-            table_pos + obj_spawn_min, table_pos + obj_spawn_max
-        )
+        self.data.qpos[adr : adr + 3] = self.data.qpos[adr : adr + 3].clip(spawn_min, spawn_max)
         mujoco.mju_normalize4(self.data.qpos[adr + 3 : adr + 7])
+
+    def _sample_goal(self) -> None:
+        """Sample a new goal for the environment."""
+        spawn_min, spawn_max = self._get_world_spawn_range()
+        # Sample XY and height uniformly
+        self._desired_goal[:3] = self.rng.uniform(spawn_min, spawn_max)
+        if self.rng.random() < self.cfg.task_cfg.high_goal_prob:
+            self._desired_goal[2] += self.rng.uniform(
+                self.cfg.task_cfg.height_min, self.cfg.task_cfg.height_max
+            )
+            self._desired_goal[3] = 1.0
+        else:
+            self._desired_goal[3] = 0.0
 
     def _get_obs(self) -> ObsType:
         """Get the latest observations."""
@@ -182,7 +297,7 @@ class EdgeGraspEnv(MujocoBaseEnv):
             tcp_rmat, obj_rmat
         )
         gri_pos, gri_vel = self._get_gripper_state()
-        return np.concatenate(
+        observation = np.concatenate(
             [
                 tcp_pos,
                 tcp_rmat.ravel(),
@@ -202,43 +317,32 @@ class EdgeGraspEnv(MujocoBaseEnv):
             dtype=np.float32,
         )
 
-    def _get_info(self) -> InfoType:
-        """Get the latest info dict."""
-        return self._get_info_fn()
-
-    def _compute_reward(self, obs: ObsType, _: ActType) -> tuple[float, bool]:
-        """Compute the reward and termination signal.
-
-        Args:
-            obs: Latest observation.
-            _: Latest action (unused).
-
-        Returns:
-            tuple containing the reward and termination signals.
-        """
-        obj_pos, tcp_obj_pos = obs[12:15], obs[24:27]
-        table_pos = self.data.xpos[self._mdata.table_body_id]
-        obj_height_raw = obj_pos[2] - self._mdata.table_height
-
-        self._rterms.obj_dist = self._get_planar_dist_reward(obj_pos, table_pos, obj_height_raw)
-        self._rterms.tcp_dist = self._get_tcp_dist_reward(tcp_obj_pos)
-        self._rterms.height = self._get_height_reward(obj_height_raw)
-        self._rterms.con = self._get_contact_reward()
-        self._rterms.qvel_l2, self._rterms.qfrc_l2 = self._get_joint_reward()
-
-        terminated = self._get_terminated(obj_height_raw)
-        self._rterms.fail = float(terminated)
-
-        reward = (
-            self._rcfg.weights.obj_dist * self._rterms.obj_dist
-            + self._rcfg.weights.tcp_dist * self._rterms.tcp_dist
-            + self._rcfg.weights.height * self._rterms.height
-            + self._rcfg.weights.con * self._rterms.con
-            + self._rcfg.weights.qvel_l2 * self._rterms.qvel_l2
-            + self._rcfg.weights.qfrc_l2 * self._rterms.qfrc_l2
-            + self._rcfg.weights.fail * self._rterms.fail
+        obj_height_raw = obj_pos[2:] - self._mdata.table_height
+        achieved_goal = np.concatenate(
+            [obj_pos, obj_height_raw > self.cfg.task_cfg.lift_tol], dtype=np.float32
         )
-        return reward, terminated
+        return {
+            "observation": observation,
+            "achieved_goal": achieved_goal,
+            "desired_goal": self._desired_goal.copy(),
+        }
+
+    def _get_info(self, obs: ObsType) -> InfoType:
+        """Get the latest info dict.
+
+        Precomputes and caches reward terms + termination that are goal-independent.
+        """
+        obj_height_raw = obs["achieved_goal"][2] - self._mdata.table_height
+        terminated = self._get_terminated(obj_height_raw)
+        is_success = self._is_success(obs["achieved_goal"], obs["desired_goal"])
+        info = {
+            "terminated": terminated,
+            "is_success": is_success,
+            "reg_rew": self._get_reg_reward(terminated),
+        }
+        if self.reward_type == "dense":
+            info["state_rew"] = self._get_dense_state_reward(obs["observation"])
+        return info
 
     # region Helpers
 
@@ -270,13 +374,18 @@ class EdgeGraspEnv(MujocoBaseEnv):
             obj_spawn_max=np.array([spawn_range_xy[0], spawn_range_xy[1], table_height + 1e-3]),
         )
 
-    def _get_debug_info(self) -> InfoType:
-        """Return the dict of individual reward terms to values."""
-        return {f.name: getattr(self._rterms, f.name) for f in fields(self._rterms)}
+    def _get_world_spawn_range(self) -> tuple[NDArray, NDArray]:
+        """Get the object spawn range in the world frame"""
+        table_pos = self.model.body_pos[self._mdata.table_body_id]
+        table_quat = self.model.body_quat[self._mdata.table_body_id]
+        spawn_min, spawn_max = np.split(np.empty(6, dtype=np.float64), 2)
+        mujoco.mju_rotVecQuat(spawn_min, self._mdata.obj_spawn_min, table_quat)
+        mujoco.mju_rotVecQuat(spawn_max, self._mdata.obj_spawn_max, table_quat)
+        return table_pos + spawn_min, table_pos + spawn_max
 
     # region Obs Helpers
 
-    def _get_poses(self) -> TupleNDArray6:
+    def _get_poses(self) -> tuple[NDArray, ...]:
         """Get the TCP, object, object-TCP poses as position vectors and rotation matrices."""
         # TCP pose relative to the world frame
         tcp_pos = self.data.site_xpos[self._mdata.tcp_site_id]
@@ -292,7 +401,7 @@ class EdgeGraspEnv(MujocoBaseEnv):
         tcp_obj_rmat = tcp_rmat.T @ obj_rmat
         return tcp_pos, tcp_rmat, obj_pos, obj_rmat, tcp_obj_pos, tcp_obj_rmat
 
-    def _get_twists(self, tcp_rmat: NDArray, obj_rmat: NDArray) -> TupleNDArray6:
+    def _get_twists(self, tcp_rmat: NDArray, obj_rmat: NDArray) -> tuple[NDArray, ...]:
         """Get TCP, object, and object-TCP twists as linear and angular velocity vectors.
 
         Linear velocities are world-frame. Angular velocities are local to the frame of the body
@@ -320,101 +429,64 @@ class EdgeGraspEnv(MujocoBaseEnv):
 
     # region Rew Helpers
 
-    def _get_planar_dist_reward(
-        self, obj_pos: NDArray, table_pos: NDArray, obj_height_raw: float
-    ) -> float:
+    @staticmethod
+    def _norm(x: FloatArray) -> np.float64 | FloatArray:
+        """L2 norm along the last axis with np.sqrt(np.sum(x * x))"""
+        return np.sqrt(np.sum(x * x, axis=-1))
+
+    def _get_target_dist_reward(
+        self,
+        tgt_dist: FloatArray,
+        tgt_flag: np.float32 | FloatArray,
+        obj_height_raw: np.float32 | FloatArray,
+    ) -> np.float32 | FloatArray:
+        """Get the target-object distance reward term (guidance term for sparse rewards)."""
+        tgt_dist_rew = np.tanh(tgt_dist)
+        mask = np.logical_and(tgt_flag > 0, obj_height_raw < self.cfg.task_cfg.lift_tol)
+        tgt_dist_rew[mask] = 1.0
+        return tgt_dist_rew
+
+    def _get_table_dist_reward(
+        self,
+        obj_pos: FloatArray,
+        tgt_flag: np.float32 | FloatArray,
+        obj_height_raw: np.float32 | FloatArray,
+    ) -> np.float32 | FloatArray:
         """Get the object's planar distance from table center reward term."""
-        if obj_height_raw > self._rcfg.lift_tol:
-            return 0.0
-        tt_obj_pos_xy = obj_pos[:2] - table_pos[:2]
-        obj_dist = np.sqrt(np.sum(tt_obj_pos_xy * tt_obj_pos_xy))
-        obj_dist /= self._mdata.table_extent
-        return float(np.tanh(self._rcfg.dist_mult * obj_dist) - 1)
+        table_pos = self.data.xpos[self._mdata.table_body_id]
+        obj_dist = self._norm(obj_pos[..., :2] - table_pos[:2]) / self._mdata.table_extent
+        tbl_dist_rew = np.tanh(self.cfg.task_cfg.dist_mult * obj_dist) - 1
+        mask = np.logical_or(tgt_flag == 0, obj_height_raw > self.cfg.task_cfg.lift_tol)
+        tbl_dist_rew[mask] = 0.0
+        return tbl_dist_rew
 
-    def _get_tcp_dist_reward(self, tcp_obj_pos: NDArray) -> float:
-        """Get the TCP-object distance reward term."""
-        tcp_dist = np.sqrt(np.sum(tcp_obj_pos * tcp_obj_pos))
-        return float(np.tanh(tcp_dist))
+    def _get_dense_state_reward(self, observation: FloatArray) -> float:
+        """Get state, goal-independent dense reward terms."""
+        tcp_obj_pos = observation[24:27]
+        tcp_dist_rew = float(np.tanh(self._norm(tcp_obj_pos)))
+        con_rew = float(self.data.sensordata[self._mdata.gri_con_snsr_adr] > 0) - 1
+        return self.cfg.weights.tcp_dist * tcp_dist_rew + self.cfg.weights.con * con_rew
 
-    def _get_height_reward(self, obj_height_raw: float) -> float:
-        """Get the object height-off-table reward term."""
-        height_norm = np.clip(obj_height_raw / self._rcfg.tgt_height, 0, 1)
-        return float(np.tanh(self._rcfg.height_mult * height_norm) - 1)
-
-    def _get_contact_reward(self) -> float:
-        """Get the gripper-object contact reward term."""
-        con_fnd = self.data.sensordata[self._mdata.gri_con_snsr_adr]
-        return float(con_fnd > 0) - 1
-
-    def _get_joint_reward(self) -> tuple[float, float]:
-        """Get the robot joint velocity and force squared L2 reward terms."""
+    def _get_reg_reward(self, terminated: bool) -> float:
+        """Get the regularization and failure reward terms."""
         qvel = self.data.qvel[: self._mdata.gri_dof_adr]
         qfrc = self.data.qfrc_actuator[: self._mdata.gri_dof_adr]
-        qvel_l2_term = float((qvel * qvel).sum())
-        qfrc_l2_term = float((qfrc * qfrc).sum())
-        return qvel_l2_term, qfrc_l2_term
+        qvel_l2 = float((qvel * qvel).sum())
+        qfrc_l2 = float((qfrc * qfrc).sum())
+        return (
+            self.cfg.weights.qvel_l2 * qvel_l2
+            + self.cfg.weights.qfrc_l2 * qfrc_l2
+            + self.cfg.weights.fail * float(terminated)
+        )
 
     def _get_terminated(self, obj_height_raw: float) -> bool:
-        """Get the terminated signal due to heavy robot/gripper collisions or object falling."""
+        """Get the terminated signal due to heavy robot/gripper collisions or the object falling."""
         adr = self._mdata.rbt_con_snsr_adr
         con_frc = self.data.sensordata[adr : adr + 3]
-        con_frc_norm = np.sqrt(np.sum(con_frc * con_frc))
-        con_frc_term = con_frc_norm > self._rcfg.col_tol
-        obj_fall_term = obj_height_raw < -self._rcfg.fall_tol
+        con_frc_term = self._norm(con_frc) > self.cfg.task_cfg.col_tol
+        obj_fall_term = obj_height_raw < -self.cfg.task_cfg.fall_tol
         return bool(con_frc_term or obj_fall_term)
 
-
-# region RewardCfg
-
-
-@dataclass(slots=True)
-class EdgeGraspRewardCfg:
-    """Reward function configuration for the EdgeGrasp environment."""
-
-    tgt_height: float = 0.5
-    """Target height for lifting object above the table. Default value is 0.5."""
-
-    lift_tol: float = 0.025
-    """Object-table distance reward is disabled if object is lifted above `lift_tol` to allow its
-    free movement. Default value is 0.025."""
-
-    col_tol: float = 10.0
-    """Failure due to robot collision is triggered if the max collision force exceeds `col_tol`.
-    Default value is 10."""
-
-    fall_tol: float = 0.02
-    """Failure due to object falling is triggered if object falls below the table by more
-    than `fall_tol`. Defautl value is 0.02."""
-
-    dist_mult: float = 2.5
-    """Multiplier for object distance before applying tanh() in reward term. Default value is 2.5."""
-
-    height_mult: float = 2.0
-    """Multiplier for object height before applying tanh() for reward term. Default value is 2."""
-
-    @dataclass(slots=True)
-    class Weights:
-        """Weights for the individual reward terms."""
-
-        obj_dist: float = 0.2
-        """Weight for the object-table center distance reward term. Default value is 0.2."""
-
-        tcp_dist: float = -0.15
-        """Weight for the tcp-object distance reward term. Default value is -0.15."""
-
-        height: float = 0.55
-        """Weight for the object height reward term. Default value is 0.55."""
-
-        con: float = 0.1
-        """Weight for the gripper-object contact reward term. Default value is 0.1."""
-
-        qvel_l2: float = -5e-3
-        """Weight for the joint velocity squared L2 reward term. Default value is 5e-3."""
-
-        qfrc_l2: float = -5e-3
-        """Weight for the joint force squared L2 reward term. Default value is 5e-3."""
-
-        fail: float = -3.0
-        """Weight for failure/termination reward term. Default value is -3."""
-
-    weights: Weights = field(default_factory=Weights)
+    def _is_success(self, achieved_goal: GoalType, desired_goal: GoalType) -> float:
+        """Get task success status."""
+        return float(self._norm(achieved_goal - desired_goal) < self.cfg.task_cfg.goal_tol)
