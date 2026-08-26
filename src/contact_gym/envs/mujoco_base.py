@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from abc import ABC, abstractmethod
 from collections import ChainMap
-from typing import TYPE_CHECKING, Any, TypeAlias
+from typing import TYPE_CHECKING, Any, Literal, TypeAlias
 
 import gymnasium as gym
 import mujoco
@@ -18,8 +18,11 @@ if TYPE_CHECKING:
     from ..curriculum import CurriculumTerm
     from ..dr import DomainRandomizer
 
-    ActType: TypeAlias = NDArray[np.float32]
-    ObsType: TypeAlias = NDArray[np.float32]
+    FloatArray: TypeAlias = NDArray[np.float32]
+    BoolArray: TypeAlias = NDArray[np.bool_]
+    ActType: TypeAlias = FloatArray
+    GoalType: TypeAlias = FloatArray
+    ObsType: TypeAlias = dict[str, FloatArray]
     InfoType: TypeAlias = dict[str, Any]
     RGBType: TypeAlias = NDArray[np.uint8]
 
@@ -29,13 +32,19 @@ logger = logging.getLogger(__name__)
 class MujocoBaseEnv(ABC, gym.Env):
     """Base MuJoCo-based environment.
 
-    Defines common environment `action_space`, `reset`, `step`, `render` and `close` logic.
-    Extending classes must provide `observation_space`, `_reset_data`, `_get_obs`,
-    `_get_info` and `_compute_reward` logic.
+    Follows the **goal** environment API from Gymnasium Robotics. Defines common
+    environment `action_space`, domain randomization and curriculum learning logic.
+
+    Provides `reset`, `step`, `render`, `close`, and `compute_truncated` methods.
+    Extending classes must provide the goal-based `compute_reward` and
+    `compute_terminated` implementations, in additon to the environment-specific
+    `observation_space` as well as `_reset_data`, `_sample_goal`, `_get_obs` and
+    `_get_info` methods.
 
     Args:
         spec: MuJoCo scene spec (MjSpec) to build model from.
         frame_skip: Number of sim steps per env step. Default value is 10.
+        reward_type: Reward type, one of ["dense", "sparse"]. Default value is sparse.
         domain_randomizers: Sequence of domain randomizers to apply during environment
             reset. See :class:`DomainRandomizer` for details. Default value is empty.
         curriculum_terms: Sequence of curriculum terms to call during environment reset.
@@ -50,6 +59,7 @@ class MujocoBaseEnv(ABC, gym.Env):
         self,
         spec: mujoco.MjSpec,
         frame_skip: int = 10,
+        reward_type: Literal["dense", "sparse"] = "sparse",
         domain_randomizers: Sequence[DomainRandomizer] = (),
         curriculum_terms: Sequence[CurriculumTerm] = (),
         render_mode: str | None = None,
@@ -63,6 +73,7 @@ class MujocoBaseEnv(ABC, gym.Env):
         self.model = spec.compile()
         self.data = mujoco.MjData(self.model)
         self.frame_skip = frame_skip
+        self.reward_type = reward_type
         self.rng = np.random.default_rng()
         self.domain_randomizers = domain_randomizers
         self.curriculum_terms = curriculum_terms
@@ -98,8 +109,10 @@ class MujocoBaseEnv(ABC, gym.Env):
             domain_randomizer(self.model, self.data, self.rng)
         self._reset_data()
         self._apply_options(options)
+        self._sample_goal()
         mujoco.mj_forward(self.model, self.data)
-        return self._get_obs(), self._get_info()
+        obs = self._get_obs()
+        return obs, self._get_info(obs)
 
     def step(self, action: ActType) -> tuple[ObsType, float, bool, bool, InfoType]:
         self.step_count += 1
@@ -116,8 +129,10 @@ class MujocoBaseEnv(ABC, gym.Env):
             mujoco.mj_step(self.model, self.data, self.frame_skip)
         mujoco.mj_step1(self.model, self.data)
         obs = self._get_obs()
-        reward, terminated = self._compute_reward(obs, action)
-        return obs, reward, terminated, False, self._get_info()
+        info = self._get_info(obs)
+        reward = self.compute_reward(obs["achieved_goal"], obs["desired_goal"], info)
+        terminated = self.compute_terminated(obs["achieved_goal"], obs["desired_goal"], info)
+        return obs, float(reward), bool(terminated), False, info
 
     def render(self, *, camera: str | int = -1) -> RGBType:
         if self._renderer is None:
@@ -129,7 +144,31 @@ class MujocoBaseEnv(ABC, gym.Env):
         if self._renderer is not None:
             self._renderer.close()
 
-    # region Helpers
+    # region Goal API
+
+    @abstractmethod
+    def compute_reward(
+        self, achieved_goal: GoalType, desired_goal: GoalType, info: InfoType
+    ) -> np.float32 | FloatArray:
+        """Compute task reward for acheived and desired goals. Must support batched inputs."""
+
+    @abstractmethod
+    def compute_terminated(
+        self, achieved_goal: GoalType, desired_goal: GoalType, info: InfoType
+    ) -> np.bool_ | BoolArray:
+        """Compute terminated signal for acheived and desired goals. Must support batched inputs."""
+
+    def compute_truncated(
+        self, achieved_goal: GoalType, desired_goal: GoalType, info: InfoType
+    ) -> np.bool_ | BoolArray:
+        """Compute truncated signal for acheived and desired goals. Must support batched inputs.
+
+        Returns:
+            NumPy array with False values. Zero-dimensional for single inputs.
+        """
+        return np.zeros(achieved_goal.shape[:-1], dtype=np.bool_)
+
+    # region Env API
 
     @abstractmethod
     def _reset_data(self) -> None:
@@ -139,24 +178,18 @@ class MujocoBaseEnv(ABC, gym.Env):
         """
 
     @abstractmethod
+    def _sample_goal(self) -> None:
+        """Sample a new goal for the environment."""
+
+    @abstractmethod
     def _get_obs(self) -> ObsType:
         """Get the latest observations."""
 
     @abstractmethod
-    def _get_info(self) -> InfoType:
+    def _get_info(self, obs: ObsType) -> InfoType:
         """Get the latest info dict."""
 
-    @abstractmethod
-    def _compute_reward(self, obs: ObsType, act: ActType) -> tuple[float, bool]:
-        """Compute the reward and termination signal.
-
-        Args:
-            obs: Latest observation.
-            act: Latest action.
-
-        Returns:
-            tuple containing the reward and termination signals.
-        """
+    # region Helpers
 
     def _set_home_key(self) -> int:
         """Set the home keyframe for free objects in the scene."""

@@ -23,17 +23,6 @@ def build_edge_grasp(
     stitched together at runtime, so any supported gripper can be attached to any
     supported robot.
 
-    The gripper is attached to the robot's `attachment_site` (every robot spec is assumed
-    to define this site marking where an end-effector should be mounted) and prefixed
-    with "gripper-". The robot and gripper home keyframes are merged into a single `home`
-    key on the scene. A mocap body is added along with an inactive weld equality
-    constraint between the mocap and the gripper's `tcp` site (every gripper spec is
-    assumed to define this site, centered between its fingers), allowing the mocap to
-    later drive the end-effector via IK. A table is attached at a fixed world position,
-    and the requested object is attached on top of it, offset by the table's `topcenter`
-    site. Finally, linear/angular velocity sensors are added at the gripper's tcp site,
-    along with contact sensors between the gripper and object, and on the robot body.
-
     Args:
         robot: Choice of robot manipulator, see :func:`ALL_ROBOTS` for options. Default
             value is panda.
