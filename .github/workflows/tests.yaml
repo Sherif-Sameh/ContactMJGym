@@ -17,6 +17,12 @@ jobs:
         uses: prefix-dev/setup-pixi@v0.10.1
         with:
           pixi-version: latest
+      
+      - name: Set up headless OpenGL
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libegl1-mesa-dev libgl1-mesa-dri
+          echo "MUJOCO_GL=egl" >> "$GITHUB_ENV"
 
       - name: Install test environment
         run: pixi install -e test
