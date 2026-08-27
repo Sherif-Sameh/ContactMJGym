@@ -446,8 +446,7 @@ class EdgeGraspEnv(MujocoBaseEnv):
         """Get the target-object distance reward term (guidance term for sparse rewards)."""
         tgt_dist_rew = np.tanh(tgt_dist)
         mask = np.logical_and(tgt_flag > 0, obj_height_raw < self.cfg.task_cfg.lift_tol)
-        tgt_dist_rew[mask] = 1.0
-        return tgt_dist_rew
+        return np.where(mask, 1.0, tgt_dist_rew)
 
     def _get_table_dist_reward(
         self,
@@ -460,8 +459,7 @@ class EdgeGraspEnv(MujocoBaseEnv):
         obj_dist = self._norm(obj_pos[..., :2] - table_pos[:2]) / self._mdata.table_extent
         tbl_dist_rew = np.tanh(self.cfg.task_cfg.dist_mult * obj_dist) - 1
         mask = np.logical_or(tgt_flag == 0, obj_height_raw > self.cfg.task_cfg.lift_tol)
-        tbl_dist_rew[mask] = 0.0
-        return tbl_dist_rew
+        return np.where(mask, 0.0, tbl_dist_rew)
 
     def _get_dense_state_reward(self, observation: FloatArray) -> float:
         """Get state, goal-independent dense reward terms."""
