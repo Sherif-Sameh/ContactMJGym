@@ -14,7 +14,7 @@ from contact_gym.utils.noise import Noise, UniformSampler
 TERM_CLASSES = [LinearCurriculumTerm, CosineAnnealingCurriculumTerm]
 DR_MIN_PATH = "domain_randomizers[0].cfg.noise.sampler.min"
 DR_MAX_PATH = "domain_randomizers[0].cfg.noise.sampler.max"
-REWARD_QVEL_PATH = "_rcfg.weights.qvel_l2"
+REWARD_QVEL_PATH = "cfg.weights.qvel_l2"
 PATHS = [DR_MIN_PATH, DR_MAX_PATH, REWARD_QVEL_PATH]
 
 START = [1.0, np.ones(7), 0.0]
@@ -34,7 +34,7 @@ def _get_values(env: gym.Env) -> list[float | np.ndarray]:
     return [
         env.domain_randomizers[0].cfg.noise.sampler.min,
         env.domain_randomizers[0].cfg.noise.sampler.max,
-        env._rcfg.weights.qvel_l2,
+        env.cfg.weights.qvel_l2,
     ]
 
 
