@@ -53,7 +53,8 @@ def build_edge_grasp(
     scene_home = {k: vr + vg for (k, vr), vg in zip(robot_home.items(), gripper_home.values())}
     home_key.qpos = scene_home["qpos"]
     home_key.ctrl = scene_home["ctrl"]
-    # Add mocap body and inactive weld constraint
+    # Add mocap bodies and inactive weld constraint
+    scene_spec = templates.add_mocap_body(scene_spec, name="mocap_goal", size=0.01)
     scene_spec = templates.add_mocap_body(scene_spec, add_site=True, add_frame=True)
     scene_spec = templates.add_weld_equality(
         scene_spec, mjtObj.mjOBJ_SITE, "mocap", "gripper-tcp", active=False

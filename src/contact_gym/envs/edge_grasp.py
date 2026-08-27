@@ -53,11 +53,11 @@ class EdgeGraspEnvCfg:
         high_goal_prob: float = 0.5
         """Probability of sampling high goals above the table [0, 1]. Default value is 0.5."""
 
-        height_max: float = 0.5
-        """Maximum height for high goals above the table. Default value is 0.5."""
+        height_max: float = 0.35
+        """Maximum height for high goals above the table. Default value is 0.35."""
 
-        height_min: float = 0.1
-        """Minimum height for high goals above the table. Default value is 0.1."""
+        height_min: float = 0.15
+        """Minimum height for high goals above the table. Default value is 0.15."""
 
         goal_tol: float = 0.025
         """Tolerance for object goal position. Default value is 0.025."""
@@ -184,6 +184,7 @@ class EdgeGraspEnv(MujocoBaseEnv):
         gri_dof_adr: int
         obj_dof_adr: int
         table_body_id: int
+        goal_mocap_id: int
         tcp_site_id: int
         tcp_vel_snsr_adr: int
         gri_con_snsr_adr: int
@@ -289,6 +290,7 @@ class EdgeGraspEnv(MujocoBaseEnv):
             self._desired_goal[3] = 1.0
         else:
             self._desired_goal[3] = 0.0
+        self.data.mocap_pos[self._mdata.goal_mocap_id] = self._desired_goal[:3]
 
     def _get_obs(self) -> ObsType:
         """Get the latest observations."""
@@ -364,6 +366,7 @@ class EdgeGraspEnv(MujocoBaseEnv):
             gri_dof_adr=rbt_dof_dim,
             obj_dof_adr=rbt_dof_dim + gri_dof_dim,
             table_body_id=self.model.body("table-table").id,
+            goal_mocap_id=self.model.body("mocap_goal").mocapid,
             tcp_site_id=self.model.site("gripper-tcp").id,
             tcp_vel_snsr_adr=self.model.sensor("tcp_linvel").adr[0],
             gri_con_snsr_adr=self.model.sensor("gripper_object_contact").adr[0],

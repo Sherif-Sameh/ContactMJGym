@@ -58,7 +58,7 @@ class MocapControllerAction(TaskSpaceControllerAction):
         super().__init__(env, nrobot, max_tstep, max_rstep, fltr_acts_kwargs)
         assert env.unwrapped.model.nmocap > 0
         # Enable mocap weld constraints and get mocap -> site id mapping
-        self._mocap_siteid = self._setup_mocap_bodies(env.unwrapped.model)
+        self._mocapid, self._mocap_siteid = self._setup_mocap_bodies(env.unwrapped.model)
         # Disable actuators if requested
         if disable_acts:
             nactuator = env.unwrapped.model.nactuator
@@ -77,10 +77,9 @@ class MocapControllerAction(TaskSpaceControllerAction):
         obs, info = super().reset(seed=seed, options=options)
         # Reset mocap bodies to corresponding sites
         site_xpos = self.data.site_xpos.take(self._mocap_siteid, axis=0)
-        site_xmat = self.data.site_xmat.take(self._mocap_siteid, axis=0)
-        self.data.mocap_pos[:] = site_xpos
-        for quat, xmat in zip(self.data.mocap_quat, site_xmat):
-            mujoco.mju_mat2Quat(quat, xmat)
+        self.data.mocap_pos[self._mocapid] = site_xpos
+        for mid, sid in zip(self._mocapid, self._mocap_siteid):
+            mujoco.mju_mat2Quat(self.data.mocap_quat[mid], self.data.site_xmat[sid])
         # Reset action buffer
         self.action_buffer[:] = self.data.ctrl
         return obs, info
@@ -101,10 +100,10 @@ class MocapControllerAction(TaskSpaceControllerAction):
 
     # region Helpers
 
-    def _setup_mocap_bodies(self, model: mujoco.MjModel) -> list[int]:
+    def _setup_mocap_bodies(self, model: mujoco.MjModel) -> tuple[list[int], list[int]]:
         """Enable weld constraints involving mocap bodies and return mocap -> site id map."""
         # Enable weld constraints and establish mocap -> site id map
-        mocap_siteid = []
+        body_mocapid, mocap_siteid = [], []
         for i in range(model.neq):
             if (
                 model.eq_type[i] != mujoco.mjtEq.mjEQ_WELD
@@ -122,14 +121,10 @@ class MocapControllerAction(TaskSpaceControllerAction):
                 else:  # obj2 is the mocap site
                     mocapid = mocap2id
                     siteid = model.eq_obj1id[i]
-                mocap_siteid.append((mocapid, siteid))
-        assert len(mocap_siteid) == model.nmocap, (
-            "Expected a weld constraint for every mocap body. "
-            f"Got {len(mocap_siteid)}/{model.nmocap} constrained mocaps."
-        )
-        # Order mocap -> site id map by mocap id and keep only site ids
-        mocap_siteid = [siteid for _, siteid in sorted(mocap_siteid, key=lambda x: x[0])]
-        return mocap_siteid
+                body_mocapid.append(mocapid)
+                mocap_siteid.append(siteid)
+        assert len(mocap_siteid) > 0, "Expected at last a single mocap weld constraint. Found None."
+        return body_mocapid, mocap_siteid
 
     def _build_mocap_action(
         self, max_tstep: float, max_rstep: float
@@ -144,9 +139,9 @@ class MocapControllerAction(TaskSpaceControllerAction):
             step = np.sqrt(np.sum(action * action, axis=2)) + 1e-12
             action *= np.minimum(1.0, limits / step)[:, :, None]
             # Add pose offsets to mocap poses in place
-            self.data.mocap_pos += action[:, 0]
+            self.data.mocap_pos[self._mocapid] += action[:, 0]
             quat = self.data.mocap_quat
-            for i in range(nmocap):
-                mujoco.mju_quatIntegrate(quat[i], action[i, 1], 1.0)
+            for i, mid in enumerate(self._mocapid):
+                mujoco.mju_quatIntegrate(quat[mid], action[i, 1], 1.0)
 
         return mocap_action
