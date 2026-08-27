@@ -7,7 +7,10 @@ import numpy as np
 import contact_gym  # noqa: F401
 import contact_gym.dr as dr
 from contact_gym.dr import DataStateRandomizer, DomainRandomizer, ModelParamRandomizer
+from contact_gym.envs import EdgeGraspEnvCfg
 from contact_gym.utils.noise import CategoricalSampler, GaussianSampler, Noise, UniformSampler
+
+SceneCfg = EdgeGraspEnvCfg.SceneCfg
 
 
 def get_actuator_randomizers() -> list[DomainRandomizer]:
@@ -105,12 +108,13 @@ def main(
             --seed 0
     """
     env_name = "contact_gym/EdgeGrasp-v0"
+    cfg = EdgeGraspEnvCfg(scene_cfg=SceneCfg(object=object))
     env = gym.make(
         env_name,
+        cfg=cfg,
         domain_randomizers=get_actuator_randomizers()
         + get_joint_randomizers()
         + get_state_randomizers(jnt_std, pos_std, yaw_std),
-        object=object,
     )
     unwrapped = env.unwrapped
     unwrapped.domain_randomizers.extend(get_geom_randomizers(unwrapped.model))

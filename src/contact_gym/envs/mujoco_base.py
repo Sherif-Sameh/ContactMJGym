@@ -134,7 +134,7 @@ class MujocoBaseEnv(ABC, gym.Env):
         terminated = self.compute_terminated(obs["achieved_goal"], obs["desired_goal"], info)
         return obs, float(reward), bool(terminated), False, info
 
-    def render(self, *, camera: str | int = -1) -> RGBType:
+    def render(self, *, camera: mujoco.mjvCamera | str | int = -1) -> RGBType:
         if self._renderer is None:
             self._renderer = mujoco.Renderer(self.model)
         self._renderer.update_scene(self.data, camera=camera)

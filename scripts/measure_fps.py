@@ -10,6 +10,9 @@ from numpy.typing import NDArray
 import contact_gym  # noqa: F401
 import contact_gym.controllers
 from contact_gym.controllers import ALL_CONTROLLERS
+from contact_gym.envs import EdgeGraspEnvCfg
+
+SceneCfg = EdgeGraspEnvCfg.SceneCfg
 
 INTERNAL_ENV_IDS = [
     env_id.split("/")[-1]
@@ -36,6 +39,7 @@ def main(
     seed: int = 0,
     controller: str | None = None,
     kwargs: dict | None = None,
+    scene_kwargs: dict | None = None,
 ):
     """Measure steps/sec throughput of a registered MuJoCo gymnasium environment.
 
@@ -49,6 +53,7 @@ def main(
         seed: Base seed; episode `i` is seeded with `seed + i`. Default value is 0.
         controller: Optional controller to wrap environment with. Default value is None.
         kwargs: Optional extra kwargs forwarded to gym.make (e.g., '{"frame_skip": 20}').
+        scene_kwargs: Optional kwargs for scene configuration (e.g.,'{"robot": "fr3"}' ). 
 
     Usage:
         python measure_fps.py --env_name "EdgeGrasp-v0"
@@ -60,10 +65,13 @@ def main(
             --seed 0 \
             --controller mocap \
             --kwargs '{"frame_skip": 20}'
+            --scene_kwargs '{"robot": "fr3"}'
     """
     env_name = f"contact_gym/{env_name}" if env_name in INTERNAL_ENV_IDS else env_name
     kwargs = kwargs if kwargs else {}
-    env = gym.make(env_name, **kwargs)
+    scene_kwargs = scene_kwargs if scene_kwargs else {}
+    cfg = EdgeGraspEnvCfg(scene_cfg=SceneCfg(**scene_kwargs))
+    env = gym.make(env_name, cfg=cfg, **kwargs)
     if controller is not None:
         assert controller in CONTROLLER_REGISTRY
         env = CONTROLLER_REGISTRY[controller](env)
@@ -79,6 +87,7 @@ def main(
     print(f"Action scale:   {act_scale:.4f}")
     print(f"Controller:     {controller}")
     print(f"Kwargs:         {kwargs}")
+    print(f"Scene kwargs:   {scene_kwargs}")
     print(f"Frame skip:     {frame_skip}")
     print("-" * 64)
 

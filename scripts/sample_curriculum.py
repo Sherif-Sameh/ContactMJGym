@@ -9,8 +9,10 @@ import numpy as np
 import contact_gym  # noqa: F401
 import contact_gym.dr as dr
 from contact_gym.curriculum.fixed import LinearCurriculumTerm
+from contact_gym.envs import EdgeGraspEnvCfg
 from contact_gym.utils.noise import GaussianSampler, Noise
 
+SceneCfg = EdgeGraspEnvCfg.SceneCfg
 logging.basicConfig(level=logging.DEBUG, format="%(asctime)s - %(levelname)s\n%(message)s\n")
 
 
@@ -77,11 +79,12 @@ def main(
             --seed 0
     """
     env_name = "contact_gym/EdgeGrasp-v0"
+    cfg = EdgeGraspEnvCfg(scene_cfg=SceneCfg(object=object))
     env = gym.make(
         env_name,
+        cfg=cfg,
         domain_randomizers=get_randomizers(pos_std, yaw_std),
         curriculum_terms=[get_curriculum(jnt_std)],
-        object=object,
         max_episode_steps=500,
     )
     unwrapped = env.unwrapped

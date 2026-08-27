@@ -10,6 +10,9 @@ from numpy.typing import NDArray
 import contact_gym  # noqa: F401
 import contact_gym.controllers
 from contact_gym.controllers import ALL_CONTROLLERS
+from contact_gym.envs import EdgeGraspEnvCfg
+
+SceneCfg = EdgeGraspEnvCfg.SceneCfg
 
 INTERNAL_ENV_IDS = [
     env_id.split("/")[-1]
@@ -35,6 +38,7 @@ def main(
     seed: int | None = None,
     controller: str | None = None,
     kwargs: dict | None = None,
+    scene_kwargs: dict | None = None,
 ):
     """Launch a live MuJoCo viewer window for a registered gymnasium env.
 
@@ -47,6 +51,7 @@ def main(
         seed: Optional seed for the environment. Default value is None.
         controller: Optional controller to wrap environment with. Default value is None.
         kwargs: Optional extra kwargs forwarded to gym.make (e.g., '{"frame_skip": 20}').
+        scene_kwargs: Optional kwargs for scene configuration (e.g.,'{"robot": "fr3"}' ). 
 
     Usage:
         python simple_agent.py --env_name "EdgeGrasp-v0"
@@ -56,11 +61,14 @@ def main(
             --act_scale 0.05 \
             --seed 0 \
             --controller mocap \
-            --kwargs '{"frame_skip": 20}'
+            --kwargs '{"frame_skip": 20}' \
+            --scene_kwargs '{"robot": "fr3"}'
     """
     env_name = f"contact_gym/{env_name}" if env_name in INTERNAL_ENV_IDS else env_name
     kwargs = kwargs if kwargs else {}
-    env = gym.make(env_name, **kwargs)
+    scene_kwargs = scene_kwargs if scene_kwargs else {}
+    cfg = EdgeGraspEnvCfg(scene_cfg=SceneCfg(**scene_kwargs))
+    env = gym.make(env_name, cfg=cfg, **kwargs)
     if controller is not None:
         assert controller in CONTROLLER_REGISTRY
         env = CONTROLLER_REGISTRY[controller](env)
@@ -82,7 +90,7 @@ def main(
             _, _, terminated, truncated, _ = env.step(action)
             viewer.sync()
             if terminated or truncated:
-                env.reset(seed=seed)
+                env.reset()
             # Rate limit loop
             next_frame += frame_dt
             sleep_time = next_frame - time.perf_counter()
