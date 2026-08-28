@@ -4,6 +4,7 @@ import os
 from typing import TYPE_CHECKING, Callable
 
 import gymnasium as gym
+from gymnasium.wrappers import RescaleAction
 from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv, VecEnv, VecNormalize
 
@@ -16,6 +17,8 @@ if TYPE_CHECKING:
 def make_vec_env(env_cfg: EnvCfg, monitor_dir: str | None = None) -> VecEnv:
     """Build a SB3 :class:`DummyVecEnv` or :class:`SubprocVecEnv` with optional
     :class:`Monitor` and task-space controller wrappers according to `env_cfg`.
+
+    If no controller is selected, the raw unscaled action space is rescaled to [-1, 1].
 
     Does *NOT* apply `VecNormalize`, see :func:`wrap_vec_normalize` for that, since
     the train and eval envs need different `training=` values.
@@ -55,6 +58,8 @@ def wrap_vec_normalize(
 def _make_env_fn(env_cfg: EnvCfg, rank: int, monitor_dir: str | None) -> Callable[[], gym.Env]:
     """Create factory function for single gymnasium environments with optional
     :class:`Monitor` and task-space controller wrappers.
+
+    If no controller is selected, the raw unscaled action space is rescaled to [-1, 1].
     """
 
     def _init() -> gym.Env:
@@ -66,7 +71,7 @@ def _make_env_fn(env_cfg: EnvCfg, rank: int, monitor_dir: str | None) -> Callabl
         env = Monitor(
             env, filename=monitor_path, info_keywords=tuple(env_cfg.monitor_info_keywords)
         )
-        if env_cfg.tscontroller.enabled:
+        if env_cfg.tscontroller is not None and env_cfg.tscontroller.enabled:
             ctrl_cfg = env_cfg.tscontroller
             assert ctrl_cfg.controller in ALL_CONTROLLERS, (
                 f"Unknown task-space controller type {ctrl_cfg.controller}."
@@ -81,6 +86,8 @@ def _make_env_fn(env_cfg: EnvCfg, rank: int, monitor_dir: str | None) -> Callabl
                 max_rstep=ctrl_cfg.max_rstep,
                 fltr_acts_kwargs=ctrl_cfg.fltr_acts_kwargs,
             )
+        else:  # rescale raw action space
+            env = RescaleAction(env, min_action=-1, max_action=1)
         env.reset(seed=env_cfg.seed + rank)
         return env
 
