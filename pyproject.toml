@@ -38,6 +38,7 @@ mink = ">=1.1.0"
 
 [tool.pixi.feature.sb3.pypi-dependencies]
 stable-baselines3 = ">=2.9.0"
+gymnasium-robotics = ">=1.4.0"
 
 [tool.ruff]
 # Exclude a variety of commonly ignored directories.

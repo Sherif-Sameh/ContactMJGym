@@ -1,0 +1,75 @@
+# TD3 + HER on FetchPickAndPlace-v4 with sparse rewards
+
+name = "td3_her_fetch_pick_and_place_sparse"
+
+[train_env]
+env_id = "FetchPickAndPlace-v4"
+n_envs = 8
+vec_env_type = "subproc"
+seed = 0
+
+[train_env.vecnormalize]
+enabled = false
+norm_obs = true
+norm_reward = false
+clip_obs = 10.0
+gamma = 0.99
+norm_obs_keys = ["observation"]
+
+[eval_env]
+env_id = "FetchPickAndPlace-v4"
+n_envs = 4
+vec_env_type = "dummy"
+seed = 1_000
+
+[eval_env.vecnormalize]
+enabled = false
+norm_obs = true
+norm_reward = false
+clip_obs = 10.0
+gamma = 0.99
+norm_obs_keys = ["observation"]
+
+[algorithm]
+policy = "MultiInputPolicy"
+learning_rate = 1e-3
+buffer_size = 1_000_000
+learning_starts = 1_000
+batch_size = 256
+tau = 0.005
+gamma = 0.99
+train_freq = 1
+gradient_steps = 1
+policy_delay = 2
+target_policy_noise = 0.2
+target_noise_clip = 0.5
+seed = 0
+device = "cpu"
+
+[algorithm.action_noise]
+class = "stable_baselines3.common.noise.NormalActionNoise"
+
+[algorithm.action_noise.kwargs]
+mean = [0.0, 0.0, 0.0, 0.0]
+sigma = [0.2, 0.2, 0.2, 0.2]
+
+[algorithm.policy_kwargs]
+net_arch = [256, 256, 256]
+
+[her]
+enabled = true
+n_sampled_goal = 4
+goal_selection_strategy = "future"
+copy_info_dict = false
+
+[logging]
+tensorboard_log = "runs"
+log_interval = 128
+eval_freq = 100_000
+n_eval_episodes = 20
+save_freq = 100_000
+verbose = 1
+
+[training]
+total_timesteps = 4_000_000
+progress_bar = true

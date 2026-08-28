@@ -1,0 +1,72 @@
+# TD3 on FetchReach-v4 with the dense rewards
+
+name = "td3_fetch_reach_dense"
+
+[train_env]
+env_id = "FetchReachDense-v4"
+n_envs = 8
+vec_env_type = "subproc"
+seed = 0
+
+[train_env.vecnormalize]
+enabled = false
+norm_obs = true
+norm_reward = true
+clip_obs = 10.0
+clip_reward = 10.0
+gamma = 0.99
+
+[eval_env]
+env_id = "FetchReachDense-v4"
+n_envs = 4
+vec_env_type = "dummy"
+seed = 1_000
+
+
+[eval_env.vecnormalize]
+enabled = false
+norm_obs = true
+norm_reward = false
+clip_obs = 10.0
+gamma = 0.99
+
+[algorithm]
+policy = "MultiInputPolicy"
+learning_rate = 1e-3
+buffer_size = 200_000
+learning_starts = 1_000
+batch_size = 256
+tau = 0.005
+gamma = 0.99
+train_freq = 1
+gradient_steps = 1
+policy_delay = 2
+target_policy_noise = 0.2
+target_noise_clip = 0.5
+seed = 0
+device = "cpu"
+
+[algorithm.action_noise]
+class = "stable_baselines3.common.noise.NormalActionNoise"
+
+[algorithm.action_noise.kwargs]
+mean = [0.0, 0.0, 0.0, 0.0]
+sigma = [0.1, 0.1, 0.1, 0.1]
+
+[algorithm.policy_kwargs]
+net_arch = [256, 256]
+
+[logging]
+tensorboard_log = "runs"
+log_interval = 32
+eval_freq = 10_000
+n_eval_episodes = 20
+save_freq = 20_000
+verbose = 1
+
+[her]
+enabled = false
+
+[training]
+total_timesteps = 200_000
+progress_bar = true
