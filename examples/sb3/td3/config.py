@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 from examples.sb3.common.config import EnvCfg, HERCfg, LoggingCfg, TrainingCfg
 
@@ -13,7 +13,7 @@ if TYPE_CHECKING:
 class TD3AlgorithmCfg:
     """SB3 :class:`stable_baselines3.td3.TD3` algorithm configuration."""
 
-    policy: str = "MultiInputPolicy"
+    policy: Literal["MlpPolicy", "CnnPolicy", "MultiInputPolicy"] = "MultiInputPolicy"
     learning_rate: float = 1e-3
     buffer_size: int = 1_000_000
     learning_starts: int = 100

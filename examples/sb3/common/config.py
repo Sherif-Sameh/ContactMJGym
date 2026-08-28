@@ -27,12 +27,12 @@ class VecNormalizeCfg:
 
     enabled: bool = True
     norm_obs: bool = True
-    norm_reward: bool = False
+    norm_reward: bool = True
     clip_obs: float = 10.0
     clip_reward: float = 10.0
     gamma: float = 0.99
     epsilon: float = 1e-8
-    norm_obs_keys: list[str] = None
+    norm_obs_keys: list[str] | None = None
 
 
 @dataclass
