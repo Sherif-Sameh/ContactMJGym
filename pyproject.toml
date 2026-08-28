@@ -28,12 +28,16 @@ markers = ["unit"]
 [tool.pixi.environments]
 test = ["test"]
 mink = ["mink"]
+sb3 = ["sb3", "mink"]
 
 [tool.pixi.feature.test.pypi-dependencies]
 pytest = ">=8.4"
 
 [tool.pixi.feature.mink.pypi-dependencies]
 mink = ">=1.1.0"
+
+[tool.pixi.feature.sb3.pypi-dependencies]
+stable-baselines3 = ">=2.9.0"
 
 [tool.ruff]
 # Exclude a variety of commonly ignored directories.

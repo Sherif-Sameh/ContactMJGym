@@ -1,3 +1,14 @@
 {
+    "files.exclude": {
+        "**/.pixi": true,
+        "**/.pytest_cache": true,
+        "**/*.egg-info": true
+    },
+    "files.watcherExclude": {
+        "**/.pixi": true,
+        "**/.pytest_cache": true,
+        "**/*.egg-info": true,
+        "**/robots/**/assets/**": true
+    },
     "python-envs.defaultEnvManager": "ms-python.python:system"
 }
