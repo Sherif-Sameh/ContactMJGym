@@ -64,6 +64,7 @@ class LoggingCfg:
     """TensorBoard logging configuration."""
 
     tensorboard_log: str = "runs"
+    hparam_metrics: list[str] | None = None
     log_interval: int = 4  # in total episodes
     eval_freq: int = 10_000  # in total env steps
     n_eval_episodes: int = 20

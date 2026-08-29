@@ -19,17 +19,18 @@ class HParamCallback(BaseCallback):
     """Log experiment config to TensorBoard's HPARAMS tab at the start of training.
 
     Args:
-        config: *Raw* config dict as loaded from TOML. Flattened to a single shallow dict
-            as required by :class:`HParam`.
-        metrics: Metrics that will appear in the `HPARAMS` Tensorboard tab.
+        config: *Raw* config dict as loaded from TOML. Is internally flattened to a
+            single shallow dict as required by :class:`HParam`.
+        metrics: Metrics that will appear in the `HPARAMS` Tensorboard tab. If None, the
+            class default `METRICS_DEFAULT` is used.
     """
 
-    METRICS_DEFAULT: ClassVar[list[str]] = ["rollout/ep_rew_mean", "eval/mean_reward"]
+    METRICS_DEFAULT: ClassVar[list[str]] = ["rollout_window/ep_rew_mean", "eval/ep_rew_mean"]
 
-    def __init__(self, config: dict, metrics: list[str] = METRICS_DEFAULT, verbose: int = 0):
+    def __init__(self, config: dict, metrics: list[str] | None = None, verbose: int = 0):
         super().__init__(verbose)
         self.config = config
-        self.metrics = metrics
+        self.metrics = self.METRICS_DEFAULT if metrics is None else metrics
 
     def _on_training_start(self) -> None:
         hparam_dict = self._flatten_config(self.config)
@@ -37,6 +38,8 @@ class HParamCallback(BaseCallback):
         self.logger.record(
             "hparams", HParam(hparam_dict, metrics_dict), exclude=("stdout", "log", "json", "csv")
         )
+        if self.verbose >= 1:
+            print(f"Logged hyperparameter configuration with metrics: {self.metrics}")
 
     def _on_step(self) -> bool:
         return True
@@ -75,12 +78,11 @@ class RolloutWithStatsCallback(BaseCallback):
     Args:
         log_interval: Logging interval in episodes. Must match `model.learn()`'s own
             `log_interval`. Default value is 4.
-        verbose: verbosity level: 0 for no output, 1 for info messages, 2 for debug
-            messages. Default value is 0.
     """
 
-    def __init__(self, log_interval: int = 4, verbose: int = 0):
-        super().__init__(verbose)
+    def __init__(self, log_interval: int = 4):
+        super().__init__(verbose=0)
+        assert log_interval > 0, f"log_interval must be > 0. Got {log_interval}"
         self.log_interval = log_interval
         self._rewards: list = []
         self._lengths: list = []
@@ -99,7 +101,7 @@ class RolloutWithStatsCallback(BaseCallback):
                 self._successes.append(float(is_success))
 
         n_logs = max(len(self._rewards), len(self._successes))
-        if self.log_interval > 0 and n_logs % self.log_interval == 0:
+        if n_logs % self.log_interval == 0:
             self._record_stats()
         return True
 
@@ -144,7 +146,7 @@ class EvalWithStatsCallback(EventCallback):
         verbose: int = 1,
     ):
         super().__init__(verbose=verbose)
-        assert eval_freq > 0
+        assert eval_freq > 0, f"eval_freq must be > 0. Got {eval_freq}"
         self.eval_env = eval_env
         self.n_eval_episodes = n_eval_episodes
         self.eval_freq = eval_freq
@@ -180,12 +182,12 @@ class EvalWithStatsCallback(EventCallback):
         episode_lengths = np.asarray(episode_lengths, dtype=np.float64)
 
         mean_reward = float(episode_rewards.mean())
-        self.logger.record("eval/mean_reward", mean_reward)
-        self.logger.record("eval/min_reward", float(episode_rewards.min()))
-        self.logger.record("eval/max_reward", float(episode_rewards.max()))
-        self.logger.record("eval/mean_ep_length", float(episode_lengths.mean()))
-        self.logger.record("eval/min_ep_length", float(episode_lengths.min()))
-        self.logger.record("eval/max_ep_length", float(episode_lengths.max()))
+        self.logger.record("eval/ep_rew_mean", mean_reward)
+        self.logger.record("eval/ep_rew_min", float(episode_rewards.min()))
+        self.logger.record("eval/ep_rew_max", float(episode_rewards.max()))
+        self.logger.record("eval/ep_len_mean", float(episode_lengths.mean()))
+        self.logger.record("eval/ep_len_min", float(episode_lengths.min()))
+        self.logger.record("eval/ep_len_max", float(episode_lengths.max()))
 
         if self._is_success_buffer:
             successes = np.asarray(self._is_success_buffer, dtype=np.float64)
