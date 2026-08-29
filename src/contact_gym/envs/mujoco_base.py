@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any, Literal, TypeAlias
 
 import gymnasium as gym
 import mujoco
+import mujoco.viewer
 import numpy as np
 from gymnasium import spaces
 
@@ -53,7 +54,7 @@ class MujocoBaseEnv(ABC, gym.Env):
         renderer_kwargs: Optional kwargs to pass to :class:`mujoco.Renderer` for rendering.
     """
 
-    metadata = {"render_modes": ["rgb_array"], "render_fps": 50}  # noqa: RUF012
+    metadata = {"render_modes": ["rgb_array", "human"], "render_fps": 50}  # noqa: RUF012
 
     def __init__(
         self,
@@ -79,8 +80,9 @@ class MujocoBaseEnv(ABC, gym.Env):
         self.curriculum_terms = curriculum_terms
         self.render_mode = render_mode
         self._renderer = (
-            None if render_mode is None else mujoco.Renderer(self.model, **renderer_kwargs)
+            mujoco.Renderer(self.model, **renderer_kwargs) if render_mode == "rgb_array" else None
         )
+        self._viewer = None
         self.metadata["render_fps"] = int(
             np.round(1.0 / (self.model.opt.timestep * self.frame_skip))
         )
@@ -89,6 +91,11 @@ class MujocoBaseEnv(ABC, gym.Env):
         ctrl_low = self.model.actuator_ctrlrange[:, 0].astype(np.float32)
         ctrl_high = self.model.actuator_ctrlrange[:, 1].astype(np.float32)
         self.action_space = spaces.Box(low=ctrl_low, high=ctrl_high, dtype=np.float32)
+
+    @property
+    def viewer_is_running(self) -> bool:
+        """True if a human-mode viewer window is open and hasn't been closed by the user."""
+        return self._viewer is not None and self._viewer.is_running()
 
     # region Core API
 
@@ -112,6 +119,8 @@ class MujocoBaseEnv(ABC, gym.Env):
         self._sample_goal()
         mujoco.mj_forward(self.model, self.data)
         obs = self._get_obs()
+        if self.render_mode == "human":
+            self.render()
         return obs, self._get_info(obs)
 
     def step(self, action: ActType) -> tuple[ObsType, float, bool, bool, InfoType]:
@@ -132,9 +141,18 @@ class MujocoBaseEnv(ABC, gym.Env):
         info = self._get_info(obs)
         reward = self.compute_reward(obs["achieved_goal"], obs["desired_goal"], info)
         terminated = self.compute_terminated(obs["achieved_goal"], obs["desired_goal"], info)
+        if self.render_mode == "human":
+            self.render()
         return obs, float(reward), bool(terminated), False, info
 
-    def render(self, *, camera: mujoco.mjvCamera | str | int = -1) -> RGBType:
+    def render(self, *, camera: mujoco.mjvCamera | str | int = -1) -> RGBType | None:
+        if self.render_mode == "human":
+            if self._viewer is None:
+                self._viewer = mujoco.viewer.launch_passive(self.model, self.data)
+            self._viewer.sync()
+            return None
+        if self._renderer is None:
+            self._renderer = mujoco.Renderer(self.model)
         if self._renderer is None:
             self._renderer = mujoco.Renderer(self.model)
         self._renderer.update_scene(self.data, camera=camera)
@@ -143,6 +161,8 @@ class MujocoBaseEnv(ABC, gym.Env):
     def close(self) -> None:
         if self._renderer is not None:
             self._renderer.close()
+        if self._viewer is not None:
+            self._viewer.close()
 
     # region Goal API
 
