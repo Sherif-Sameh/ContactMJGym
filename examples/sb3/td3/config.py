@@ -1,12 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Literal
+from typing import Any, Literal
 
 from examples.sb3.common.config import EnvCfg, HERCfg, LoggingCfg, TrainingCfg
-
-if TYPE_CHECKING:
-    from stable_baselines3.common.noise import ActionNoise
 
 
 @dataclass
@@ -22,7 +19,7 @@ class TD3AlgorithmCfg:
     gamma: float = 0.99
     train_freq: int = 1
     gradient_steps: int = 1
-    action_noise: ActionNoise | None = None
+    action_noise: Any | None = None
     policy_delay: int = 2
     target_policy_noise: float = 0.2
     target_noise_clip: float = 0.5

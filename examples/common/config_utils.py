@@ -22,7 +22,7 @@ import dataclasses
 import importlib
 import types
 import typing
-from typing import TYPE_CHECKING, Any, TypeVar, Union, get_args, get_origin
+from typing import TYPE_CHECKING, Any, TypeVar, Union
 
 import tomllib
 
@@ -71,8 +71,7 @@ def dict_to_dataclass(data: dict, cls: type[T]) -> T:
             continue
         raw = data[f.name]
         field_type, _ = _unwrap_optional(hints.get(f.name, f.type))
-        origin = get_origin(field_type)
-
+        origin = typing.get_origin(field_type)
         if raw is None:
             kwargs[f.name] = None
         elif _is_dynamic_spec(raw):
@@ -80,7 +79,7 @@ def dict_to_dataclass(data: dict, cls: type[T]) -> T:
         elif dataclasses.is_dataclass(field_type) and isinstance(raw, dict):
             kwargs[f.name] = dict_to_dataclass(raw, field_type)
         elif origin in (list, typing.List) and isinstance(raw, list):
-            item_args = get_args(field_type)
+            item_args = typing.get_args(field_type)
             item_type, _ = _unwrap_optional(item_args[0]) if item_args else (Any, False)
             if dataclasses.is_dataclass(item_type):
                 kwargs[f.name] = [
@@ -153,9 +152,9 @@ def _is_dynamic_spec(value: Any) -> bool:
 def _unwrap_optional(tp: Any) -> tuple[Any, bool]:
     """Return `(inner_type, True)` for `Optional[X]` / `X | None`,
     otherwise `(tp, False)`."""
-    origin = get_origin(tp)
+    origin = typing.get_origin(tp)
     if origin is Union or origin is getattr(types, "UnionType", None):
-        non_none = [a for a in get_args(tp) if a is not type(None)]
+        non_none = [a for a in typing.get_args(tp) if a is not type(None)]
         if len(non_none) == 1:
             return non_none[0], True
     return tp, False

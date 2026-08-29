@@ -63,11 +63,12 @@ goal_selection_strategy = "future"
 copy_info_dict = false
 
 [logging]
-tensorboard_log = "runs"
+tensorboard_log = "runs/gymnasium_robotics"
+hparam_metrics = ["eval/ep_rew_mean", "eval/success_rate_mean"]
 log_interval = 128
 eval_freq = 100_000
 n_eval_episodes = 20
-save_freq = 100_000
+save_freq = 500_000
 verbose = 1
 
 [training]

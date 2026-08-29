@@ -57,11 +57,12 @@ sigma = [0.1, 0.1, 0.1, 0.1]
 net_arch = [256, 256]
 
 [logging]
-tensorboard_log = "runs"
+tensorboard_log = "runs/gymnasium_robotics"
+hparam_metrics = ["eval/ep_rew_mean", "eval/success_rate_mean"]
 log_interval = 32
 eval_freq = 10_000
 n_eval_episodes = 20
-save_freq = 20_000
+save_freq = 25_000
 verbose = 1
 
 [her]
