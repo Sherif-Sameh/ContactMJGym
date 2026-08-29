@@ -1,11 +1,3 @@
-"""
-Train a TD3 agent (Stable-Baselines3) from a TOML config.
-
-Usage:
-    python examples/sb3/td3/train.py --config examples/sb3/td3/config/fetch_reach_dense.toml
-    python examples/sb3/td3/train.py --config examples/sb3/td3/config/fetch_pick_and_place_sparse_her.toml
-"""
-
 from __future__ import annotations
 
 import contextlib
