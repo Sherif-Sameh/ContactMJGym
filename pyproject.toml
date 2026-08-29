@@ -38,6 +38,9 @@ mink = ">=1.1.0"
 
 [tool.pixi.feature.sb3.pypi-dependencies]
 stable-baselines3 = ">=2.9.0"
+tensorboard = ">=2.9.1"
+tqdm = "*"
+rich = "*"
 gymnasium-robotics = ">=1.4.2"
 
 [tool.ruff]
