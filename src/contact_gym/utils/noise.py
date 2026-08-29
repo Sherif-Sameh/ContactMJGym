@@ -15,6 +15,7 @@ if TYPE_CHECKING:
 
     FloatArray: TypeAlias = NDArray[np.floating]
     ParamType: TypeAlias = float | Sequence[float] | FloatArray
+    SizeType: TypeAlias = int | tuple[int, ...] | None
     Operation: TypeAlias = Callable[[FloatArray, FloatArray], FloatArray]
 
 
@@ -24,7 +25,9 @@ if TYPE_CHECKING:
 class NoiseModel(Protocol):
     """Protocol implemented by functional noise models."""
 
-    def sample(self, nominal: ParamType, rng: np.random.Generator) -> FloatArray:
+    def sample(
+        self, nominal: ParamType, rng: np.random.Generator, *, size: SizeType = None
+    ) -> FloatArray:
         """Sample noise and apply it to the nominal value."""
         ...
 
@@ -66,9 +69,11 @@ class Noise:
             else partial(_OPERATIONS[operation], scalar_first=scalar_first)
         )
 
-    def sample(self, nominal: FloatArray, rng: np.random.Generator) -> FloatArray:
+    def sample(
+        self, nominal: FloatArray, rng: np.random.Generator, *, size: SizeType = None
+    ) -> FloatArray:
         """Sample noise and apply the configured operation to the nominal value."""
-        noise = self.sampler.sample(rng)
+        noise = self.sampler.sample(rng, size=size)
         return self.operation(nominal, noise)
 
 
@@ -78,7 +83,7 @@ class Noise:
 class Sampler(Protocol):
     """Protocol implemented by noise samplers."""
 
-    def sample(self, rng: np.random.Generator) -> FloatArray:
+    def sample(self, rng: np.random.Generator, *, size: SizeType = None) -> FloatArray:
         """Draw a noise sample using the supplied random-number generator."""
         ...
 
@@ -97,9 +102,11 @@ class ConstantSampler:
         assert dtype is None or np.issubdtype(dtype, np.floating)
         self.value = value if isinstance(value, float) else _as_float_array(value, dtype)
 
-    def sample(self, _: np.random.Generator) -> FloatArray:
+    def sample(self, _: np.random.Generator, *, size: SizeType = None) -> FloatArray:
         """Return the configured constant, ignoring the random generator."""
-        return self.value if isinstance(self.value, float) else self.value.copy()
+        if size is None:
+            return np.asarray(self.value).copy()
+        return np.broadcast_to(self.value, size).copy()
 
 
 class CategoricalSampler:
@@ -137,9 +144,69 @@ class CategoricalSampler:
         else:
             self.probabilities = None
 
-    def sample(self, rng: np.random.Generator) -> FloatArray:
+    def sample(self, rng: np.random.Generator, *, size: SizeType = None) -> FloatArray:
         """Draw a categorical sample using the supplied random-number generator."""
-        return rng.choice(self.categories, p=self.probabilities, axis=0)
+        return rng.choice(self.categories, size=size, p=self.probabilities, axis=0)
+
+
+class ChoiceSampler:
+    """Sampler that draws values from a configured set of samplers.
+
+    Args:
+        samplers: Sequence of samplers to draw values from. At least a single value
+            is required.
+        probabilities: Optional probabilities for each sampler. If given, its length
+            must match the number of samplers. Probabilities are normalized internally.
+            If None, all samplers are given equal probability. Default value is None.
+        dtype: Optional datatype for sampler parameters. If None, the default dtype is
+            derived from the parameters if they're float arrays, otherwise it defaults
+            to `np.float64`. Default value is None.
+    """
+
+    def __init__(
+        self,
+        samplers: Sequence[Sampler],
+        probabilities: ParamType | None = None,
+        *,
+        dtype: DTypeLike | None = None,
+    ) -> None:
+        assert dtype is None or np.issubdtype(dtype, np.floating)
+        self.samplers = tuple(samplers)
+        assert len(self.samplers) > 0, "At least a single sampler must be given. Got zero."
+        if probabilities is not None:
+            self.probabilities = _as_float_array(probabilities, dtype)
+            self.probabilities /= np.sum(self.probabilities)
+            assert self.probabilities.shape == (len(self.samplers),), (
+                "Length of probabilities must match number of samplers."
+            )
+            assert not np.any(self.probabilities < 0), "Probabilities must be non-negative."
+        else:
+            self.probabilities = np.ones(len(self.samplers), dtype=dtype) / len(self.samplers)
+
+    def sample(self, rng: np.random.Generator, *, size: SizeType = None) -> FloatArray:
+        """Draw a sample from the configured choice of samplers.
+
+        If `size` is None, a single sample is drawn. If `size` is int or a tuple of
+        length=1, then `size` samples are drawn. However, this will only work if the
+        parameters of all samplers are themselves of length=1. Otherwise, `size` must be
+        a tuple of length>1; in which case `size[0]` samples are drawn, each of shape
+        `size[1:]`.
+        """
+        if size is None:
+            size = (1,)
+        elif isinstance(size, int):
+            size = (size,)
+        n_samples, sample_shape = size[0], size[1:]
+        counts = rng.multinomial(n_samples, self.probabilities)
+
+        out = np.empty(size)
+        ptr = 0
+        for sampler, count in zip(self.samplers, counts):
+            if count:
+                out[ptr : ptr + count] = sampler.sample(rng, size=(count,) + sample_shape)
+                ptr += count
+        rng.shuffle(out)
+        return out
 
 
 class UniformSampler:
@@ -161,9 +228,9 @@ class UniformSampler:
             f"min must be less than or equal to max. Got min {self.min} and max {self.max}."
         )
 
-    def sample(self, rng: np.random.Generator) -> FloatArray:
+    def sample(self, rng: np.random.Generator, *, size: SizeType = None) -> FloatArray:
         """Draw a uniformly distributed sample."""
-        return rng.uniform(self.min, self.max)
+        return rng.uniform(self.min, self.max, size=size)
 
 
 class GaussianSampler:
@@ -185,9 +252,9 @@ class GaussianSampler:
         self.std = std if isinstance(std, float) else _as_float_array(std, dtype)
         assert np.all(self.std >= 0), f"std must be non-negative. Got std {self.std}."
 
-    def sample(self, rng: np.random.Generator) -> FloatArray:
+    def sample(self, rng: np.random.Generator, *, size: SizeType = None) -> FloatArray:
         """Draw a normally distributed sample."""
-        return rng.normal(self.mean, self.std)
+        return rng.normal(self.mean, self.std, size=size)
 
 
 class SquashedGaussianSampler:
@@ -217,9 +284,9 @@ class SquashedGaussianSampler:
         assert np.all(self.std >= 0), f"std must be non-negative. Got std {self.std}."
         assert np.all(self.scale >= 0), f"scale must be non-negative. Got scale {self.scale}."
 
-    def sample(self, rng: np.random.Generator) -> FloatArray:
+    def sample(self, rng: np.random.Generator, *, size: SizeType = None) -> FloatArray:
         """Draw Gaussian noise and squash the result to the range [-`scale`, `scale`]."""
-        return self.scale * np.tanh(rng.normal(self.mean, self.std))
+        return self.scale * np.tanh(rng.normal(self.mean, self.std, size=size))
 
 
 # region Helpers
