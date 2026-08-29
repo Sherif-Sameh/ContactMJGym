@@ -2,8 +2,6 @@ import logging
 
 import fire
 import gymnasium as gym
-import mujoco
-import mujoco.viewer
 import numpy as np
 
 import contact_gym  # noqa: F401
@@ -83,25 +81,25 @@ def main(
     env = gym.make(
         env_name,
         cfg=cfg,
+        render_mode="human",
         domain_randomizers=get_randomizers(pos_std, yaw_std),
         curriculum_terms=[get_curriculum(jnt_std)],
         max_episode_steps=500,
     )
     unwrapped = env.unwrapped
+    assert hasattr(unwrapped, "viewer_is_running"), (
+        "Environment does not have a viewer_is_running property."
+    )
     env.reset(seed=seed)
     action = unwrapped.data.ctrl.copy()
     action[:7] = unwrapped.data.qpos[:7]
 
-    with mujoco.viewer.launch_passive(
-        unwrapped.model, unwrapped.data, show_right_ui=False
-    ) as viewer:
-        while viewer.is_running():
-            # Sample and apply action
-            _, _, terminated, truncated, _ = env.step(action)
-            viewer.sync()
-            if terminated or truncated:
-                env.reset()
-                action[:7] = unwrapped.data.qpos[:7]
+    while unwrapped.viewer_is_running:
+        # Sample and apply action
+        _, _, terminated, truncated, _ = env.step(action)
+        if terminated or truncated:
+            env.reset()
+            action[:7] = unwrapped.data.qpos[:7]
     env.close()
 
 

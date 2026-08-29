@@ -4,7 +4,6 @@ from typing import Callable
 import fire
 import gymnasium as gym
 import mujoco
-import mujoco.viewer
 from numpy.typing import NDArray
 
 import contact_gym  # noqa: F401
@@ -68,36 +67,32 @@ def main(
     kwargs = kwargs if kwargs else {}
     scene_kwargs = scene_kwargs if scene_kwargs else {}
     cfg = EdgeGraspEnvCfg(scene_cfg=SceneCfg(**scene_kwargs))
-    env = gym.make(env_name, cfg=cfg, **kwargs)
+    env = gym.make(env_name, cfg=cfg, render_mode="human", **kwargs)
     if controller is not None:
         assert controller in CONTROLLER_REGISTRY
         env = CONTROLLER_REGISTRY[controller](env)
     unwrapped = env.unwrapped
-    assert hasattr(unwrapped, "model") and hasattr(unwrapped, "data"), (
-        "Environment does not expose MuJoCo model and data structs."
+    assert hasattr(unwrapped, "viewer_is_running"), (
+        "Environment does not have a viewer_is_running property."
     )
     env.reset(seed=seed)
     action_fn = _build_action_fn(act_scale, controller)
     frame_dt = 1 / unwrapped.metadata["render_fps"]
 
-    with mujoco.viewer.launch_passive(
-        unwrapped.model, unwrapped.data, show_right_ui=False
-    ) as viewer:
-        next_frame = time.perf_counter()
-        while viewer.is_running():
-            # Sample and apply action
-            action = action_fn(env, unwrapped.data)
-            _, _, terminated, truncated, _ = env.step(action)
-            viewer.sync()
-            if terminated or truncated:
-                env.reset()
-            # Rate limit loop
-            next_frame += frame_dt
-            sleep_time = next_frame - time.perf_counter()
-            if sleep_time > 0:
-                time.sleep(sleep_time)
-            else:
-                next_frame = time.perf_counter()
+    next_frame = time.perf_counter()
+    while unwrapped.viewer_is_running:
+        # Sample and apply action
+        action = action_fn(env, unwrapped.data)
+        _, _, terminated, truncated, _ = env.step(action)
+        if terminated or truncated:
+            env.reset()
+        # Rate limit loop
+        next_frame += frame_dt
+        sleep_time = next_frame - time.perf_counter()
+        if sleep_time > 0:
+            time.sleep(sleep_time)
+        else:
+            next_frame = time.perf_counter()
     env.close()
 
 
