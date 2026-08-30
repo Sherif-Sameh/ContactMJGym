@@ -77,6 +77,61 @@ class Noise:
         return self.operation(nominal, noise)
 
 
+class MixtureNoise:
+    """Mixture noise model that that draws values from a configured set of noise models.
+
+    Args:
+        noise_models: Sequence of noise models to draw values from. At least a single
+            value is required.
+        probabilities: Optional probabilities for each noise model. If given, its length
+            must match the number of noise models. Probabilities are normalized
+            internally. If None, all noise models are given equal probability. Default
+            value is None.
+    """
+
+    def __init__(
+        self, noise_models: Sequence[NoiseModel], probabilities: ParamType | None = None
+    ) -> None:
+        self.noise_models = tuple(noise_models)
+        assert len(self.noise_models) > 0, "At least a single noise model must be given. Got zero."
+        if probabilities is not None:
+            self.probabilities = _as_float_array(probabilities, dtype=None)
+            self.probabilities /= np.sum(self.probabilities)
+            assert self.probabilities.shape == (len(self.noise_models),), (
+                "Length of probabilities must match number of noise models."
+            )
+            assert not np.any(self.probabilities < 0), "Probabilities must be non-negative."
+        else:
+            self.probabilities = np.ones(len(self.noise_models)) / len(self.noise_models)
+
+    def sample(
+        self, nominal: FloatArray, rng: np.random.Generator, *, size: SizeType = None
+    ) -> FloatArray:
+        """Sample noise from the configured choice of noise models.
+
+        If `size` is None, a single sample of shape `nominal`.shape is drawn. Otherwise,
+        If `size` is given, it must be a shape that `nominal` can be broadcast to and
+        `size[0]` is used as the number of samples to draw of shape `size[1:]`.
+        """
+        if size is None:
+            idx = rng.choice(len(self.noise_models), p=self.probabilities)
+            return self.noise_models[idx].sample(nominal, rng, size=nominal.shape)
+        # Multiple samples needed
+        nominal = np.broadcast_to(nominal, size)
+        n_samples = nominal.shape[0]
+        sample_shape = nominal.shape[1:]
+
+        choices = rng.choice(len(self.noise_models), size=n_samples, p=self.probabilities)
+
+        out = np.empty(size, dtype=nominal.dtype)
+        for i, noise_model in enumerate(self.noise_models):
+            mask = choices == i
+            n = int(mask.sum())
+            if n:
+                out[mask] = noise_model.sample(nominal[mask], rng, size=(n,) + sample_shape)
+        return out
+
+
 # region Samplers
 
 
@@ -147,66 +202,6 @@ class CategoricalSampler:
     def sample(self, rng: np.random.Generator, *, size: SizeType = None) -> FloatArray:
         """Draw a categorical sample using the supplied random-number generator."""
         return rng.choice(self.categories, size=size, p=self.probabilities, axis=0)
-
-
-class ChoiceSampler:
-    """Sampler that draws values from a configured set of samplers.
-
-    Args:
-        samplers: Sequence of samplers to draw values from. At least a single value
-            is required.
-        probabilities: Optional probabilities for each sampler. If given, its length
-            must match the number of samplers. Probabilities are normalized internally.
-            If None, all samplers are given equal probability. Default value is None.
-        dtype: Optional datatype for sampler parameters. If None, the default dtype is
-            derived from the parameters if they're float arrays, otherwise it defaults
-            to `np.float64`. Default value is None.
-    """
-
-    def __init__(
-        self,
-        samplers: Sequence[Sampler],
-        probabilities: ParamType | None = None,
-        *,
-        dtype: DTypeLike | None = None,
-    ) -> None:
-        assert dtype is None or np.issubdtype(dtype, np.floating)
-        self.samplers = tuple(samplers)
-        assert len(self.samplers) > 0, "At least a single sampler must be given. Got zero."
-        if probabilities is not None:
-            self.probabilities = _as_float_array(probabilities, dtype)
-            self.probabilities /= np.sum(self.probabilities)
-            assert self.probabilities.shape == (len(self.samplers),), (
-                "Length of probabilities must match number of samplers."
-            )
-            assert not np.any(self.probabilities < 0), "Probabilities must be non-negative."
-        else:
-            self.probabilities = np.ones(len(self.samplers), dtype=dtype) / len(self.samplers)
-
-    def sample(self, rng: np.random.Generator, *, size: SizeType = None) -> FloatArray:
-        """Draw a sample from the configured choice of samplers.
-
-        If `size` is None, a single sample is drawn. If `size` is int or a tuple of
-        length=1, then `size` samples are drawn. However, this will only work if the
-        parameters of all samplers are themselves of length=1. Otherwise, `size` must be
-        a tuple of length>1; in which case `size[0]` samples are drawn, each of shape
-        `size[1:]`.
-        """
-        if size is None:
-            size = (1,)
-        elif isinstance(size, int):
-            size = (size,)
-        n_samples, sample_shape = size[0], size[1:]
-        counts = rng.multinomial(n_samples, self.probabilities)
-
-        out = np.empty(size)
-        ptr = 0
-        for sampler, count in zip(self.samplers, counts):
-            if count:
-                out[ptr : ptr + count] = sampler.sample(rng, size=(count,) + sample_shape)
-                ptr += count
-        rng.shuffle(out)
-        return out
 
 
 class UniformSampler:
