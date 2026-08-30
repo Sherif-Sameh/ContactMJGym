@@ -54,11 +54,13 @@ class MocapControllerAction(TaskSpaceControllerAction):
         fltr_acts_kwargs: dict[str, Any] = {},
         disable_acts: bool = False,
     ):
-        nrobot = 1 if not hasattr(env.unwrapped, "model") else env.unwrapped.model.nmocap
-        super().__init__(env, nrobot, max_tstep, max_rstep, fltr_acts_kwargs)
         assert env.unwrapped.model.nmocap > 0
         # Enable mocap weld constraints and get mocap -> site id mapping
-        self._mocapid, self._mocap_siteid = self._setup_mocap_bodies(env.unwrapped.model)
+        self._mocapid, self._mocap_siteid = self._setup_mocap_bodies(
+            env.unwrapped.model, env.unwrapped.data
+        )
+        nrobot = len(self._mocapid)
+        super().__init__(env, nrobot, max_tstep, max_rstep, fltr_acts_kwargs)
         # Disable actuators if requested
         if disable_acts:
             nactuator = env.unwrapped.model.nactuator
@@ -100,7 +102,10 @@ class MocapControllerAction(TaskSpaceControllerAction):
 
     # region Helpers
 
-    def _setup_mocap_bodies(self, model: mujoco.MjModel) -> tuple[list[int], list[int]]:
+    @staticmethod
+    def _setup_mocap_bodies(
+        model: mujoco.MjModel, data: mujoco.MjData
+    ) -> tuple[list[int], list[int]]:
         """Enable weld constraints involving mocap bodies and return mocap -> site id map."""
         # Enable weld constraints and establish mocap -> site id map
         body_mocapid, mocap_siteid = [], []
@@ -114,7 +119,7 @@ class MocapControllerAction(TaskSpaceControllerAction):
             mocap2id = model.body_mocapid[model.site_bodyid[model.eq_obj2id[i]]]
             if mocap1id >= 0 or mocap2id >= 0:
                 model.eq_active0[i] = 1
-                self.data.eq_active[i] = 1
+                data.eq_active[i] = 1
                 if mocap1id >= 0:  # obj1 is the mocap site
                     mocapid = mocap1id
                     siteid = model.eq_obj2id[i]
