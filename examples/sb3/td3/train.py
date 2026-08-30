@@ -11,7 +11,6 @@ import fire
 with open(os.devnull, "w") as fnull, contextlib.redirect_stderr(fnull):
     import gymnasium_robotics  # noqa: F401
 import tomllib
-from stable_baselines3 import TD3
 from stable_baselines3.common.callbacks import CallbackList, CheckpointCallback
 from stable_baselines3.common.vec_env import VecEnv, VecNormalize
 from stable_baselines3.her import HerReplayBuffer
@@ -23,6 +22,7 @@ from examples.sb3.common.callbacks import (
     RolloutWithStatsCallback,
 )
 from examples.sb3.common.env_utils import make_vec_env, wrap_vec_normalize
+from examples.sb3.td3.algo import TD3WithNoiseModel
 from examples.sb3.td3.config import TD3ExperimentCfg
 
 
@@ -73,7 +73,7 @@ def train(config: str) -> None:
         )
 
     algo_cfg = cfg.algorithm
-    model = TD3(
+    model = TD3WithNoiseModel(
         policy=algo_cfg.policy,
         env=train_env,
         learning_rate=algo_cfg.learning_rate,
