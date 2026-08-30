@@ -161,8 +161,10 @@ class MujocoBaseEnv(ABC, gym.Env):
     def close(self) -> None:
         if self._renderer is not None:
             self._renderer.close()
+            self._renderer = None
         if self._viewer is not None:
             self._viewer.close()
+            self._viewer = None
 
     # region Goal API
 
