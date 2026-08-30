@@ -41,7 +41,6 @@ stable-baselines3 = ">=2.9.0"
 tensorboard = ">=2.9.1"
 tqdm = "*"
 rich = "*"
-gymnasium-robotics = ">=1.4.2"
 
 [tool.ruff]
 # Exclude a variety of commonly ignored directories.

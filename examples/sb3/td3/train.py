@@ -1,20 +1,16 @@
 from __future__ import annotations
 
-import contextlib
-import os
 from datetime import datetime
 from pathlib import Path
 from typing import Literal
 
 import fire
-
-with open(os.devnull, "w") as fnull, contextlib.redirect_stderr(fnull):
-    import gymnasium_robotics  # noqa: F401
 import tomllib
 from stable_baselines3.common.callbacks import CallbackList, CheckpointCallback
 from stable_baselines3.common.vec_env import VecEnv, VecNormalize
 from stable_baselines3.her import HerReplayBuffer
 
+import contact_gym  # noqa: F401
 from examples.common.config_utils import dict_to_dataclass
 from examples.sb3.common.callbacks import (
     EvalWithStatsCallback,

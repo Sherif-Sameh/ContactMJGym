@@ -1,18 +1,14 @@
 from __future__ import annotations
 
-import contextlib
-import os
 import time
 
 import fire
 import gymnasium as gym
-
-with open(os.devnull, "w") as fnull, contextlib.redirect_stderr(fnull):
-    import gymnasium_robotics  # noqa: F401
 import numpy as np
 import tomllib
 from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
 
+import contact_gym  # noqa: F401
 from examples.common.config_utils import dict_to_dataclass, import_from_path
 from examples.sb3.common.config import EnvCfg
 
