@@ -1,56 +1,56 @@
-# TD3 on FetchReach-v4 with the dense rewards
+# TD3 + HER on FetchSlide-v4 with sparse rewards
 
-name = "td3_fetch_reach_dense"
+name = "td3_her_fetch_slide_sparse"
 
 [train_env]
-env_id = "FetchReachDense-v4"
+env_id = "FetchSlide-v4"
 n_envs = 8
 vec_env_type = "subproc"
 seed = 0
 
 [train_env.vecnormalize]
-enabled = false
+enabled = true
 norm_obs = true
-norm_reward = true
+norm_reward = false
 clip_obs = 10.0
-clip_reward = 10.0
-gamma = 0.99
+gamma = 0.98
+norm_obs_keys = ["observation"]
 
 [eval_env]
-env_id = "FetchReachDense-v4"
+env_id = "FetchSlide-v4"
 n_envs = 4
 vec_env_type = "dummy"
 seed = 1_000
 
-
 [eval_env.vecnormalize]
-enabled = false
+enabled = true
 norm_obs = true
 norm_reward = false
 clip_obs = 10.0
-gamma = 0.99
+gamma = 0.98
+norm_obs_keys = ["observation"]
 
 [algorithm]
 policy = "MultiInputPolicy"
 learning_rate = 1e-3
-buffer_size = 200_000
-learning_starts = 1_000
+buffer_size = 1_000_000
+learning_starts = 10_000
 batch_size = 256
-tau = 0.005
-gamma = 0.99
-train_freq = 1
-gradient_steps = 1
+tau = 0.01
+gamma = 0.98
+train_freq = 4
+gradient_steps = 8
 policy_delay = 2
-target_policy_noise = 0.2
-target_noise_clip = 0.5
+target_policy_noise = 0.1
+target_noise_clip = 0.3
 seed = 0
-device = "cpu"
+device = "cuda"
 
 [algorithm.action_noise]
 class = "contact_gym.utils.noise.MixtureNoise"
 
 [algorithm.action_noise.kwargs]
-probabilities = [0.2, 0.8]
+probabilities = [0.1, 0.9]
 
 [[algorithm.action_noise.kwargs.noise_models]]
 class = "contact_gym.utils.noise.Noise"
@@ -67,20 +67,23 @@ kwargs.sampler.kwargs.mean = [0.0, 0.0, 0.0, 0.0]
 kwargs.sampler.kwargs.std = [0.05, 0.05, 0.05, 0.05]
 
 [algorithm.policy_kwargs]
-net_arch = [256, 256]
+net_arch = [256, 256, 256]
+
+[her]
+enabled = true
+n_sampled_goal = 4
+goal_selection_strategy = "future"
+copy_info_dict = false
 
 [logging]
 tensorboard_log = "runs/gymnasium_robotics"
 hparam_metrics = ["eval/ep_rew_mean", "eval/success_rate_mean"]
-log_interval = 32
-eval_freq = 10_000
+log_interval = 128
+eval_freq = 100_000
 n_eval_episodes = 20
-save_freq = 25_000
+save_freq = 500_000
 verbose = 1
 
-[her]
-enabled = false
-
 [training]
-total_timesteps = 200_000
+total_timesteps = 4_000_000
 progress_bar = true
