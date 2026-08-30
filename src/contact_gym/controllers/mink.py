@@ -142,7 +142,7 @@ class MinkControllerAction(TaskSpaceControllerAction):
         """Get the qpos indices that correspond to the joints of the robot's actuators."""
         qpos_indices = []
         for act in actuator_indices:
-            assert model.actuator_trntype[act] in [
+            assert int(model.actuator_trntype[act]) in [
                 mujoco.mjtTrn.mjTRN_JOINT,
                 mujoco.mjtTrn.mjTRN_JOINTINPARENT,
             ]
