@@ -11,6 +11,7 @@ from stable_baselines3.common.vec_env import VecEnv, VecNormalize
 from stable_baselines3.her import HerReplayBuffer
 
 import contact_gym  # noqa: F401
+from contact_gym.curriculum.fixed import FixedCurriculumTerm
 from examples.common.config_utils import dict_to_dataclass
 from examples.sb3.common.callbacks import (
     EvalWithStatsCallback,
@@ -50,6 +51,15 @@ def train(config: str) -> None:
     run_dir = Path(cfg.logging.tensorboard_log) / run_id
     run_dir.mkdir(parents=True, exist_ok=True)
     print(f"[{cfg.name}] logging to {run_dir}")
+
+    # Fixed curriculum term step counts should be per-env steps; defined in total
+    # steps in config for consistency with other step parameters
+    if "curriculum_terms" in cfg.train_env.env_kwargs:
+        for c_term in cfg.train_env.env_kwargs["curriculum_terms"]:
+            if not isinstance(c_term, FixedCurriculumTerm):
+                continue
+            c_term.start_step = c_term.start_step // cfg.train_env.n_envs
+            c_term.end_step = max(c_term.end_step // cfg.train_env.n_envs, 1)
 
     train_env = _build_env(cfg, run_dir, split="train")
     eval_env = _build_env(cfg, run_dir, split="eval")

@@ -23,7 +23,9 @@ def make_vec_env(env_cfg: EnvCfg, monitor_dir: str | None = None) -> VecEnv:
     Does *NOT* apply `VecNormalize`, see :func:`wrap_vec_normalize` for that, since
     the train and eval envs need different `training=` values.
     """
-    env_fns = [_make_env_fn(env_cfg, rank, monitor_dir) for rank in range(env_cfg.n_envs)]
+    env_fns = [
+        make_env_fn(env_cfg, rank, monitor_dir=monitor_dir) for rank in range(env_cfg.n_envs)
+    ]
     assert env_cfg.vec_env_type in ["dummy", "subproc"], (
         f"Unknown vec_env_type {env_cfg.vec_env_type} for env {env_cfg.env_id}. "
         "Expected 'dummy' or 'subproc'."
@@ -52,10 +54,9 @@ def wrap_vec_normalize(
     )
 
 
-# region Helpers
-
-
-def _make_env_fn(env_cfg: EnvCfg, rank: int, monitor_dir: str | None) -> Callable[[], gym.Env]:
+def make_env_fn(
+    env_cfg: EnvCfg, rank: int, monitor: bool = True, monitor_dir: str | None = None
+) -> Callable[[], gym.Env]:
     """Create factory function for single gymnasium environments with optional
     :class:`Monitor` and task-space controller wrappers.
 
@@ -68,9 +69,10 @@ def _make_env_fn(env_cfg: EnvCfg, rank: int, monitor_dir: str | None) -> Callabl
         if monitor_dir is not None:
             os.makedirs(monitor_dir, exist_ok=True)
             monitor_path = os.path.join(monitor_dir, f"{rank}")
-        env = Monitor(
-            env, filename=monitor_path, info_keywords=tuple(env_cfg.monitor_info_keywords)
-        )
+        if monitor:
+            env = Monitor(
+                env, filename=monitor_path, info_keywords=tuple(env_cfg.monitor_info_keywords)
+            )
         if env_cfg.tscontroller is not None and env_cfg.tscontroller.enabled:
             ctrl_cfg = env_cfg.tscontroller
             assert ctrl_cfg.controller in ALL_CONTROLLERS, (
@@ -88,7 +90,6 @@ def _make_env_fn(env_cfg: EnvCfg, rank: int, monitor_dir: str | None) -> Callabl
             )
         else:  # rescale raw action space
             env = RescaleAction(env, min_action=-1, max_action=1)
-        env.reset(seed=env_cfg.seed + rank)
         return env
 
     return _init

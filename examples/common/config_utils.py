@@ -137,7 +137,11 @@ def import_from_path(dotted_path: str) -> Any:
         f"'{dotted_path}' is not a valid dotted import path "
         "(expected something like 'module.submodule.ClassName')."
     )
-    module = importlib.import_module(module_path)
+    try:
+        module = importlib.import_module(module_path)
+    except ModuleNotFoundError:
+        # try to walk-back dotted path (nested classes)
+        module = import_from_path(module_path)
     assert hasattr(module, attr_name), f"Module '{module_path}' has no attribute '{attr_name}'"
     return getattr(module, attr_name)
 

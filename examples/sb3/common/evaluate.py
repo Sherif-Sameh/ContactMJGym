@@ -3,7 +3,6 @@ from __future__ import annotations
 import time
 
 import fire
-import gymnasium as gym
 import numpy as np
 import tomllib
 from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
@@ -11,14 +10,14 @@ from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
 import contact_gym  # noqa: F401
 from examples.common.config_utils import dict_to_dataclass, import_from_path
 from examples.sb3.common.config import EnvCfg
+from examples.sb3.common.env_utils import make_env_fn
 
 
-def _make_render_env(env_cfg: EnvCfg, render: bool) -> gym.Env:
-    kwargs = dict(env_cfg.env_kwargs)
+def _make_render_env_fn(env_cfg: EnvCfg, render: bool):
+    env_cfg.env_kwargs = dict(env_cfg.env_kwargs)
     if render:
-        kwargs.setdefault("render_mode", "human")
-    env = gym.make(env_cfg.env_id, **kwargs)
-    return env
+        env_cfg.env_kwargs.setdefault("render_mode", "human")
+    return make_env_fn(env_cfg, 0, monitor=False)
 
 
 def evaluate(
@@ -61,8 +60,7 @@ def evaluate(
 
     algo_cls = import_from_path(algo)
 
-    raw_env = _make_render_env(env_cfg, render=render)
-    vec_env = DummyVecEnv([lambda: raw_env])
+    vec_env = DummyVecEnv([_make_render_env_fn(env_cfg, render)])
     vec_env.seed(seed=seed)
 
     if vecnormalize_path is not None:
@@ -112,7 +110,6 @@ def evaluate(
             f"Episode {episode + 1}/{n_episodes}:"
             f"\n\tReward = {ep_reward:.3f}\n\tLength = {ep_len}\n\tSuccess = {ep_success:.0f}\n"
         )
-    raw_env.close()
     vec_env.close()
 
     episode_rewards_arr = np.asarray(episode_rewards)
