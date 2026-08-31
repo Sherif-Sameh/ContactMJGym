@@ -3,8 +3,8 @@
 
   <default>
     <default class="table">
-      <geom type="box" contype="4" conaffinity="15" group="1" size="0.30 0.25 0.02"
-        material="tabletop_wood"/>
+      <geom type="box" group="1" size="0.30 0.25 0.02" material="tabletop_wood"
+      solimp="0.95 0.99 0.001" solref="0.01 1.0"/>
       <default class="leg">
         <geom size="0.025 0.025 0.155" material="leg_black"/>
       </default>

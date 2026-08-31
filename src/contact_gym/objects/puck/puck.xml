@@ -3,8 +3,8 @@
 
   <default>
     <default class="puck">
-      <geom type="cylinder" contype="8" conaffinity="15" condim="4" group="1"
-        friction="0.8 0.02 0.01" density="300"/>
+      <geom type="cylinder" condim="4" group="1" friction="0.8 0.02 0.01" density="400"
+        solimp="0.95 0.99 0.001" solref="0.01 1.0"/>
     </default>
   </default>
 
@@ -13,9 +13,9 @@
   </asset>
 
   <worldbody>
-    <body name="puck" pos="0 0 0.015">
+    <body name="puck" pos="0 0 0.02">
       <freejoint name="joint"/>
-      <geom name="geom" class="puck" size="0.060 0.015" material="material"/>
+      <geom name="geom" class="puck" size="0.060 0.02" material="material"/>
     </body>
   </worldbody>
 </mujoco>

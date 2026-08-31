@@ -3,8 +3,8 @@
 
   <default>
     <default class="block">
-      <geom type="box" contype="8" conaffinity="15" condim="4" group="1"
-        friction="0.8 0.02 0.01" density="300"/>
+      <geom type="box" condim="4" group="1" friction="0.8 0.02 0.01" density="400"
+        solimp="0.95 0.99 0.001" solref="0.01 1.0"/>
     </default>
   </default>
 
@@ -13,9 +13,9 @@
   </asset>
 
   <worldbody>
-    <body name="block" pos="0 0 0.015">
+    <body name="block" pos="0 0 0.02">
       <freejoint name="joint"/>
-      <geom name="geom" class="block" size="0.070 0.050 0.015" material="material"/>
+      <geom name="geom" class="block" size="0.070 0.050 0.02" material="material"/>
     </body>
   </worldbody>
 </mujoco>
