@@ -40,9 +40,9 @@ class MinkControllerAction(TaskSpaceControllerAction):
         env: The MuJoCo-based manipulation environment to wrap. Must define matching
             mocap bodies for every end-effector site.
         max_tstep: Maximum translation step size (Euclidean norm, in meters)
-            applied per action. Default value is 0.05.
+            applied per action. Default value is 0.02.
         max_rstep: Maximum rotation step size (norm of the rotation vector,
-            in radians) applied per action. Defaults value is 0.05 * pi.
+            in radians) applied per action. Defaults value is 0.04 * pi.
         fltr_acts_kwargs: Kwargs for filtering for gripper actuators. For details, see
             :func:`~..utils.mj_utils.filter_actuators`. If empty, we rely on a simple
             heuristic by filtering for actuators whose `trntype` is
@@ -57,8 +57,8 @@ class MinkControllerAction(TaskSpaceControllerAction):
     def __init__(
         self,
         env: MujocoBaseEnv,
-        max_tstep: float = 0.05,
-        max_rstep: float = 0.05 * np.pi,
+        max_tstep: float = 0.02,
+        max_rstep: float = 0.04 * np.pi,
         fltr_acts_kwargs: dict[str, Any] = {},
         mink_cfg: MinkCfg | None = None,
         aux_limits: list[mink.Limit] = [],

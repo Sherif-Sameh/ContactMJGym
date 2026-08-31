@@ -39,9 +39,9 @@ class TaskSpaceControllerAction(ABC, gym.ActionWrapper):
         env: The MuJoCo-based manipulation environment to wrap.
         nrobot: Number of robots/poses to convert to the task-space.
         max_tstep: Maximum translation step size (Euclidean norm, in meters)
-            applied per action. Default value is 0.05.
+            applied per action. Default value is 0.02.
         max_rstep: Maximum rotation step size (norm of the rotation vector,
-            in radians) applied per action. Defaults value is 0.05 * pi.
+            in radians) applied per action. Defaults value is 0.04 * pi.
         fltr_acts_kwargs: Kwargs for filtering for gripper actuators. For details, see
             :func:`filter_actuators`. If empty, we rely on a simple heuristic by filtering
             for actuators whose `trntype` is `mujoco.mjtTrn.mjTRN_TENDON`. Default value
@@ -52,8 +52,8 @@ class TaskSpaceControllerAction(ABC, gym.ActionWrapper):
         self,
         env: MujocoBaseEnv,
         nrobot: int,
-        max_tstep: float = 0.05,
-        max_rstep: float = 0.05 * np.pi,
+        max_tstep: float = 0.02,
+        max_rstep: float = 0.04 * np.pi,
         fltr_acts_kwargs: dict[str, Any] = {},
     ):
         super().__init__(env)

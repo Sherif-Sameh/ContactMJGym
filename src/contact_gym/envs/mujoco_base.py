@@ -44,7 +44,7 @@ class MujocoBaseEnv(ABC, gym.Env):
 
     Args:
         spec: MuJoCo scene spec (MjSpec) to build model from.
-        frame_skip: Number of sim steps per env step. Default value is 10.
+        frame_skip: Number of sim steps per env step. Default value is 20.
         reward_type: Reward type, one of ["dense", "sparse"]. Default value is sparse.
         domain_randomizers: Sequence of domain randomizers to apply during environment
             reset. See :class:`DomainRandomizer` for details. Default value is empty.
@@ -59,7 +59,7 @@ class MujocoBaseEnv(ABC, gym.Env):
     def __init__(
         self,
         spec: mujoco.MjSpec,
-        frame_skip: int = 10,
+        frame_skip: int = 20,
         reward_type: Literal["dense", "sparse"] = "sparse",
         domain_randomizers: Sequence[DomainRandomizer] = (),
         curriculum_terms: Sequence[CurriculumTerm] = (),
