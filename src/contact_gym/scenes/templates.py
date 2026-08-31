@@ -110,6 +110,7 @@ def add_weld_equality(
     active: bool = True,
     solimp: tuple[float, ...] = (0.9, 0.95, 0.001, 0.5, 2.0),
     solref: tuple[float, ...] = (0.02, 1.0),
+    torquescale: float = 1.0,
 ) -> mujoco.MjSpec:
     """Add a weld equality constraint to the given spec.
 
@@ -124,6 +125,7 @@ def add_weld_equality(
             value is (0.9, 0.95, 0.001, 0.5, 2.0).
         solref: Solver reference parameters for the equality constraint. Default
             value is (0.02, 1.0).
+        torquescale: A constant that scales the angular residual. Default value is 1.
 
     Returns:
         Updated MuJoCo spec.
@@ -135,7 +137,7 @@ def add_weld_equality(
         assert obj1name is not None and obj2name is not None, (
             "Both objects must be specified with mjOBJ_SITE object type."
         )
-    spec.add_equality(
+    eq = spec.add_equality(
         type=mujoco.mjtEq.mjEQ_WELD,
         name=name,
         objtype=objtype,
@@ -145,6 +147,7 @@ def add_weld_equality(
         solimp=solimp,
         solref=solref,
     )
+    eq.data[10] = torquescale
     return spec
 
 

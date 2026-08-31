@@ -57,7 +57,7 @@ def build_edge_grasp(
     scene_spec = templates.add_mocap_body(scene_spec, name="mocap_goal", size=0.01)
     scene_spec = templates.add_mocap_body(scene_spec, add_site=True, add_frame=True)
     scene_spec = templates.add_weld_equality(
-        scene_spec, mjtObj.mjOBJ_SITE, "mocap", "gripper-tcp", active=False
+        scene_spec, mjtObj.mjOBJ_SITE, "mocap", "gripper-tcp", active=False, torquescale=1.5
     )
     # Load table and attach it
     TABLE_POS = (0, 0.5, 0.0)
