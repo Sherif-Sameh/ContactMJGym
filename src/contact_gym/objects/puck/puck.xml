@@ -3,8 +3,8 @@
 
   <default>
     <default class="puck">
-      <geom type="cylinder" condim="4" group="1" friction="0.8 0.02 0.01" density="400"
-        solimp="0.95 0.99 0.001" solref="0.01 1.0"/>
+      <geom type="cylinder" condim="4" group="1" friction="0.8 0.02 0.01" mass="0.175"
+        solimp="0.95 0.99 0.001" solref="0.01 1.0" gap="0.002"/>
     </default>
   </default>
 

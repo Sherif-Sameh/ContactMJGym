@@ -92,4 +92,10 @@ def build_edge_grasp(
         data=1 << mjtConDataField.mjCONDATA_FORCE.value,
         reduce=2,
     )
+    # Configure global simulator options
+    # for consistency and high impratio results in unstable friction forces
+    scene_spec.option.impratio = 1.0
+    if gripper == "panda_hand":
+        # objects slip (with sufficient normal force) without no-slip iterations
+        scene_spec.option.noslip_iterations = 10
     return scene_spec
