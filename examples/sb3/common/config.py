@@ -16,8 +16,8 @@ class TaskSpaceControllerCfg:
 
     enabled: bool = True
     controller: Literal["mocap", "mink"] = "mocap"
-    max_tstep: float = 0.05
-    max_rstep: float = 0.05 * np.pi
+    max_tstep: float = 0.02
+    max_rstep: float = 0.04 * np.pi
     fltr_acts_kwargs: dict[str, Any] = field(default_factory=dict)
 
 

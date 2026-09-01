@@ -13,17 +13,17 @@ from stable_baselines3.her import HerReplayBuffer
 import contact_gym  # noqa: F401
 from contact_gym.curriculum.fixed import FixedCurriculumTerm
 from examples.common.config_utils import dict_to_dataclass
-from examples.sb3.common.algos import TD3WithNoiseModel
+from examples.sb3.common.algos import SACWithNoiseModel
 from examples.sb3.common.callbacks import (
     EvalWithStatsCallback,
     HParamCallback,
     RolloutWithStatsCallback,
 )
 from examples.sb3.common.env_utils import make_vec_env, wrap_vec_normalize
-from examples.sb3.td3.config import TD3ExperimentCfg
+from examples.sb3.sac.config import SACExperimentCfg
 
 
-def _build_env(cfg: TD3ExperimentCfg, run_dir: Path, *, split: Literal["train", "eval"]) -> VecEnv:
+def _build_env(cfg: SACExperimentCfg, run_dir: Path, *, split: Literal["train", "eval"]) -> VecEnv:
     env_cfg = cfg.train_env if split == "train" else cfg.eval_env
     vec_env = make_vec_env(env_cfg, monitor_dir=str(run_dir / f"monitor_{split}"))
     vec_env = wrap_vec_normalize(vec_env, env_cfg.vecnormalize, training=(split == "train"))
@@ -31,18 +31,18 @@ def _build_env(cfg: TD3ExperimentCfg, run_dir: Path, *, split: Literal["train", 
 
 
 def train(config: str) -> None:
-    """Train TD3 (optionally with HER) using Stable-Baselines3 from a TOML config.
+    """Train SAC (optionally with HER) using Stable-Baselines3 from a TOML config.
 
     Args:
-        config: Path to a TD3 experiment TOML config, see `config/*.toml` for examples).
+        config: Path to a SAC experiment TOML config, see `config/*.toml` for examples).
 
     Usage:
-        python -m examples.sb3.td3.train \
-            --config examples/sb3/td3/config/edge_grasp_dense.toml
+        python -m examples.sb3.sac.train \
+            --config examples/sb3/sac/config/edge_grasp_dense.toml
     """
     with open(config, "rb") as fh:
         cfg_dict = tomllib.load(fh)
-    cfg = dict_to_dataclass(cfg_dict, TD3ExperimentCfg)
+    cfg = dict_to_dataclass(cfg_dict, SACExperimentCfg)
 
     run_id = f"{cfg.name}_{datetime.now():%Y%m%d_%H%M%S}"
     run_dir = Path(cfg.logging.tensorboard_log) / run_id
@@ -76,7 +76,7 @@ def train(config: str) -> None:
         )
 
     algo_cfg = cfg.algorithm
-    model = TD3WithNoiseModel(
+    model = SACWithNoiseModel(
         policy=algo_cfg.policy,
         env=train_env,
         learning_rate=algo_cfg.learning_rate,
@@ -90,9 +90,9 @@ def train(config: str) -> None:
         action_noise=algo_cfg.action_noise,
         replay_buffer_class=replay_buffer_class,
         replay_buffer_kwargs=replay_buffer_kwargs,
-        policy_delay=algo_cfg.policy_delay,
-        target_policy_noise=algo_cfg.target_policy_noise,
-        target_noise_clip=algo_cfg.target_noise_clip,
+        ent_coef=algo_cfg.ent_coef,
+        target_update_interval=algo_cfg.target_update_interval,
+        target_entropy=algo_cfg.target_entropy,
         policy_kwargs=algo_cfg.policy_kwargs,
         seed=algo_cfg.seed,
         device=algo_cfg.device,
@@ -132,7 +132,7 @@ def train(config: str) -> None:
         callback=callbacks,
         log_interval=cfg.logging.log_interval,
         progress_bar=cfg.training.progress_bar,
-        tb_log_name="td3",
+        tb_log_name="sac",
     )
 
     final_dir = run_dir / "final_model"
