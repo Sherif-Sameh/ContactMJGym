@@ -59,20 +59,20 @@ class EdgeGraspEnvCfg:
         height_min: float = 0.15
         """Minimum height for high goals above the table. Default value is 0.15."""
 
-        goal_tol: float = 0.025
-        """Tolerance for object goal position. Default value is 0.025."""
+        goal_tol: float = 0.05
+        """Tolerance for object goal position. Default value is 0.05."""
 
-        lift_tol: float = 0.025
+        lift_tol: float = 0.03
         """Object-table distance dense reward term is swapped for object-target distance if
-        object is lifted above `lift_tol`. Default value is 0.025."""
+        object is lifted above `lift_tol`. Default value is 0.03."""
 
-        col_tol: float = 10.0
+        col_tol: float = 30.0
         """Termination due to robot collision is triggered if the max collision force exceeds
-        `col_tol`. Default value is 10."""
+        `col_tol`. Default value is 30."""
 
-        fall_tol: float = 0.02
+        fall_tol: float = 0.05
         """Termination due to object falling is triggered if object falls below the table by
-        more than `fall_tol`. Defautl value is 0.02."""
+        more than `fall_tol`. Defautl value is 0.05."""
 
         dist_mult: float = 2.5
         """Multiplier for object-table distance before applying tanh() for dense reward.
@@ -84,23 +84,26 @@ class EdgeGraspEnvCfg:
     class Weights:
         """Weights for the individual dense reward terms."""
 
-        tgt_dist: float = -0.45
-        """Weight for the object-target distance reward term. Default value is -0.45."""
+        tgt_dist: float = -0.4
+        """Weight for the object-target distance reward term. Default value is -0.4."""
 
-        tbl_dist: float = 0.3
-        """Weight for the object-table center distance reward term. Default value is 0.3."""
+        tbl_dist: float = 0.35
+        """Weight for the object-table center distance reward term. Default value is 0.35."""
 
-        tcp_dist: float = -0.15
-        """Weight for the tcp-object distance reward term. Default value is -0.15."""
+        tcp_dist: float = -0.2
+        """Weight for the tcp-object distance reward term. Default value is -0.2."""
 
-        con: float = 0.1
-        """Weight for the gripper-object contact reward term. Default value is 0.1."""
+        con: float = 0.05
+        """Weight for the gripper-object contact reward term. Default value is 0.05."""
 
-        qvel_l2: float = -5e-3
-        """Weight for the joint velocity squared L2 reward term. Default value is -5e-3."""
+        qvel_l2: float = -0.1
+        """Weight for the joint velocity L2 norm reward term. Default value is -0.1."""
 
-        qfrc_l2: float = -5e-3
-        """Weight for the joint force squared L2 reward term. Default value is -5e-3."""
+        qacc_l2: float = -5e-4
+        """Weight for the joint acceleration L2 norm reward term. Default value is -5e-4."""
+
+        survive: float = 1.0
+        """Weight for survival (not termination) reward term. Default value is 1."""
 
         fail: float = -3.0
         """Weight for failure/termination reward term. Default value is -3."""
@@ -141,7 +144,7 @@ class EdgeGraspEnv(MujocoBaseEnv):
     **Reward**
 
     The reward is a weighted sum of a goal guidance term, two smoothness/effort
-    regularization terms, and one sparse failure penalty. In the sparse case, the
+    regularization terms, and two sparse survival/failure terms. In the sparse case, the
     guidance term is determined only by the error in the object's position. In the dense
     scenario, the guidance term is itself made up of four separate terms, so that the
     full dense reward is:
@@ -152,20 +155,21 @@ class EdgeGraspEnv(MujocoBaseEnv):
        targets and once the object lifts off the table by more than `lift_tol`.
     3. TCP-to-object distance (minimized). Encourages the gripper to approach the object.
     4. Gripper-object contact (maximized). Encourages establishing and maintaining contact.
-    5. Squared L2 norm of robot joint velocities (minimized). Penalizes jerky motion.
-    6. Squared L2 norm of robot joint torques (minimized). Penalizes excessive actuation effort.
-    7. Failure penalty. A sparse penalty triggered by heavy robot/gripper collision
+    5. L2 norm of robot joint velocities (minimized). Penalizes jerky motion.
+    6. L2 norm of robot joint acceleration (minimized). Penalizes jerky motion.
+    7. Survival reward (maximized). Encourages avoiding early termination.
+    8. Failure penalty. A sparse penalty triggered by heavy robot/gripper collision
        forces exceeding `col_tol` or the object falling off the table by `fall_tol`;
        also terminates the episode.
 
-    Terms 5-7 are independent of the goal and are applied identically regardless of
+    Terms 5-8 are independent of the goal and are applied identically regardless of
     `reward_type`; only the guidance term (1-4 when dense, or the single distance
     threshold when sparse) changes between reward types. Joint-based terms (5, 6) apply
     to the robot arm joints only, excluding the gripper.
 
     Args:
         cfg: Configuration for scene, task and reward, see :class:`EdgeGraspEnvCfg`.
-        frame_skip: Number of sim steps per env step. Default value is 10.
+        frame_skip: Number of sim steps per env step. Default value is 20.
         reward_type: Reward type, one of ["dense", "sparse"]. Default value is sparse.
         domain_randomizers: Sequence of domain randomizers to apply during environment
             reset. See :class:`DomainRandomizer` for details. Default value is empty.
@@ -203,7 +207,7 @@ class EdgeGraspEnv(MujocoBaseEnv):
     def __init__(
         self,
         cfg: EdgeGraspEnvCfg = EdgeGraspEnvCfg(),
-        frame_skip: int = 10,
+        frame_skip: int = 20,
         reward_type: Literal["dense", "sparse"] = "sparse",
         domain_randomizers: Sequence[DomainRandomizer] = (),
         curriculum_terms: Sequence[CurriculumTerm] = (),
@@ -223,6 +227,7 @@ class EdgeGraspEnv(MujocoBaseEnv):
         self.cfg = cfg
         self._mdata = self._setup_model_data(cfg.scene_cfg.robot, cfg.scene_cfg.gripper)
         self._desired_goal = np.zeros(4, dtype=np.float32)
+        self._qvel_prev = np.zeros(self._mdata.gri_dof_adr)
         # Setup observation space
         nobs = 12 * 3 + 6 * 3 + get_qpos_dim(cfg.scene_cfg.gripper) * 2
         self.observation_space = spaces.Dict(
@@ -269,6 +274,7 @@ class EdgeGraspEnv(MujocoBaseEnv):
 
         Called after `mujoco.mj_resetData` and domain randomization, before `mujoco.mj_forward`.
         """
+        self._qvel_prev[:] = 0.0
         if not self.domain_randomizers:
             return  # initial state guaranteed to be valid
         spawn_min, spawn_max = self._get_world_spawn_range()
@@ -358,7 +364,7 @@ class EdgeGraspEnv(MujocoBaseEnv):
         table_geom = self.model.geom("table-tabletop")
         table_height = float(table_geom.pos[2] + table_geom.size[2])
         obj_geom_size = self.model.geom("object-geom").size
-        obj_geom_extent = max(obj_geom_size[:2]) if len(obj_geom_size) == 3 else obj_geom_size[0]
+        obj_geom_extent = max(obj_geom_size[:-1])
         spawn_range_xy = [s - obj_geom_extent for s in table_geom.size[:2]]
         return EdgeGraspEnv.ModelData(
             gri_qpos_adr=rbt_qpos_dim,
@@ -373,8 +379,12 @@ class EdgeGraspEnv(MujocoBaseEnv):
             rbt_con_snsr_adr=self.model.sensor("robot_contact").adr[0],
             table_height=table_height,
             table_extent=float(max(table_geom.size[:2])),
-            obj_spawn_min=np.array([-spawn_range_xy[0], -spawn_range_xy[1], table_height + 1e-3]),
-            obj_spawn_max=np.array([spawn_range_xy[0], spawn_range_xy[1], table_height + 1e-3]),
+            obj_spawn_min=np.array(
+                [-spawn_range_xy[0], -spawn_range_xy[1], table_height + obj_geom_size[-1] + 1e-3]
+            ),
+            obj_spawn_max=np.array(
+                [spawn_range_xy[0], spawn_range_xy[1], table_height + obj_geom_size[-1] + 1e-3]
+            ),
         )
 
     def _get_world_spawn_range(self) -> tuple[NDArray, NDArray]:
@@ -471,12 +481,14 @@ class EdgeGraspEnv(MujocoBaseEnv):
     def _get_reg_reward(self, terminated: bool) -> float:
         """Get the regularization and failure reward terms."""
         qvel = self.data.qvel[: self._mdata.gri_dof_adr]
-        qfrc = self.data.qfrc_actuator[: self._mdata.gri_dof_adr]
-        qvel_l2 = float((qvel * qvel).sum())
-        qfrc_l2 = float((qfrc * qfrc).sum())
+        qacc = (qvel - self._qvel_prev) / (self.model.opt.timestep * self.frame_skip)
+        self._qvel_prev[:] = qvel
+        qvel_l2 = float(self._norm(qvel))
+        qacc_l2 = float(self._norm(qacc))
         return (
             self.cfg.weights.qvel_l2 * qvel_l2
-            + self.cfg.weights.qfrc_l2 * qfrc_l2
+            + self.cfg.weights.qacc_l2 * qacc_l2
+            + self.cfg.weights.survive * float(not terminated)
             + self.cfg.weights.fail * float(terminated)
         )
 
