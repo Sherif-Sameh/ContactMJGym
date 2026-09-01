@@ -16,7 +16,7 @@
         <geom type="mesh" contype="0" conaffinity="0" group="2"/>
       </default>
       <default class="collision">
-        <geom type="mesh" contype="2" conaffinity="15" group="3"/>
+        <geom type="mesh" group="3"/>
         <default class="fingertip_pad_collision_1">
           <geom type="box" size="0.0085 0.004 0.0085" pos="0 0.0055 0.0445"/>
         </default>
@@ -109,8 +109,12 @@
   </equality>
 
   <actuator>
-    <!-- Remap original ctrlrange (0, 0.04) to (0, 255): 0.04 * 100 / 255 = 0.01568627451 -->
+    <!-- PD gains scaled by 10x from default to increase maximum grasping normal forces.
+      At the default kp=100, the max static grasping force occurs with an object whose
+      thickness equals the full-grasp width (0.08m) = -100 * 0.04 = -4N, which is
+      insufficient for grasping most objects and far from the real gripper's capabilities -->
+    <!-- Remap original ctrlrange (0, 0.04) to (0, 255): 0.04 * 1000 / 255 = 0.1568627451 -->
     <general class="panda" name="actuator8" tendon="split" forcerange="-100 100" ctrlrange="0 255"
-      gainprm="0.01568627451 0 0" biasprm="0 -100 -10"/>
+      gainprm="0.1568627451 0 0" biasprm="0 -1000 -100"/>
   </actuator>
 </mujoco>
