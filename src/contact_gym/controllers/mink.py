@@ -257,7 +257,7 @@ class MinkCfg:
     class PostureTaskCfg:
         """Configuration for the :class:`mink.PostureTask` regularization task."""
 
-        cost: float = 0.01
+        cost: float = 0.05
         gain: float = 1.0
         lm_damping: float = 0.0
 
