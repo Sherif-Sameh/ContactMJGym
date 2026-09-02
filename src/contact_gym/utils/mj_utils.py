@@ -1,5 +1,19 @@
 import mujoco
 
+MJTJOINT_TO_QPOS_NUM = {
+    mujoco.mjtJoint.mjJNT_FREE: 7,
+    mujoco.mjtJoint.mjJNT_BALL: 4,
+    mujoco.mjtJoint.mjJNT_SLIDE: 1,
+    mujoco.mjtJoint.mjJNT_HINGE: 1,
+}
+
+MJTJOINT_TO_DOF_DIM = {
+    mujoco.mjtJoint.mjJNT_FREE: 6,
+    mujoco.mjtJoint.mjJNT_BALL: 3,
+    mujoco.mjtJoint.mjJNT_SLIDE: 1,
+    mujoco.mjtJoint.mjJNT_HINGE: 1,
+}
+
 
 def get_dof_dim_from_joints(model: mujoco.MjModel, qpos_adr: int, qpos_dim: int = 1) -> int:
     """Get the `dof` dimension of a set of joints according to their types.
