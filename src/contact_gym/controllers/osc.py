@@ -29,11 +29,11 @@ class OscControllerCfg(TaskSpaceControllerCfg):
     """Names of mocap bodies for target visualization. A single mocap is expected per
     robot. Default value is ("mocap",)."""
 
-    linvel_sensors = tuple[str, ...] = ("tcp_linvel",)
+    linvel_sensors: tuple[str, ...] = ("tcp_linvel",)
     """Names of linear velocity sensors for end-effector sites to control. Must be
     referenced to the global frame. Default value is ("tcp_linvel",)."""
 
-    angvel_sensors = tuple[str, ...] = ("tcp_angvel",)
+    angvel_sensors: tuple[str, ...] = ("tcp_angvel",)
     """Names of linear velocity sensors for end-effector sites to control. Must be
     referenced to the global frame. Default value is ("tcp_linvel",)."""
 

@@ -97,7 +97,7 @@ class MocapControllerAction(TaskSpaceControllerAction):
         self._jac_robot = np.zeros_like(self._jac_full)
         self._eye = np.eye(rbt_qpos_len, dtype=np.float64)
         # Enable mocap weld constraints and get mocap -> site id mapping
-        self._mocapid, self._mocap_siteid = self._setup_mocap_bodies(
+        self._mocapid, self._siteid = self._setup_mocap_bodies(
             self.model, self.data, cfg.nrobot, cfg.eq_solimp, cfg.eq_solref
         )
         # Build action function for mocap bodies
@@ -111,9 +111,9 @@ class MocapControllerAction(TaskSpaceControllerAction):
         """
         obs, info = self.env.reset(seed=seed, options=options)
         # Reset mocap bodies to corresponding sites
-        site_xpos = self.data.site_xpos.take(self._mocap_siteid, axis=0)
+        site_xpos = self.data.site_xpos.take(self._siteid, axis=0)
         self.data.mocap_pos[self._mocapid] = site_xpos
-        for mid, sid in zip(self._mocapid, self._mocap_siteid):
+        for mid, sid in zip(self._mocapid, self._siteid):
             mujoco.mju_mat2Quat(self.data.mocap_quat[mid], self.data.site_xmat[sid])
         return obs, info
 
@@ -137,9 +137,9 @@ class MocapControllerAction(TaskSpaceControllerAction):
         if self.cfg.null_project:
             # Compute full Jacobian matrix
             mujoco.mj_jacSite(
-                self.model, self.data, self._jac_full[:3], self._jac_full[3:], self._mocap_siteid[0]
+                self.model, self.data, self._jac_full[:3], self._jac_full[3:], self._siteid[0]
             )
-            for siteid in self._mocap_siteid[1:]:  # robots assumed independent
+            for siteid in self._siteid[1:]:  # robots assumed independent
                 mujoco.mj_jacSite(
                     self.model, self.data, self._jac_robot[:3], self._jac_robot[3:], siteid
                 )
@@ -198,8 +198,6 @@ class MocapControllerAction(TaskSpaceControllerAction):
         assert len(mocap_siteid) == nrobot, (
             f"Found only {len(mocap_siteid)}/{nrobot} mocap weld constraint."
         )
-        body_mocapid = MocapControllerAction._indices_to_slice(body_mocapid)
-        mocap_siteid = MocapControllerAction._indices_to_slice(mocap_siteid)
         return body_mocapid, mocap_siteid
 
     # region Action Helpers
@@ -207,19 +205,19 @@ class MocapControllerAction(TaskSpaceControllerAction):
     def _build_mocap_action(self) -> Callable[[FloatArray], None]:
         """Build the mocap action function to update mocap poses based-on the current
         site poses and the given task-space action."""
-        nmocap = len(self._mocap_siteid)
+        nrobot = self.cfg.nrobot
         limits = np.array([self.cfg.max_tstep, self.cfg.max_rstep]).reshape(1, 2)
 
         def mocap_action(ts_action: FloatArray) -> None:
-            ts_action = ts_action.reshape(nmocap, 2, 3)
+            ts_action = ts_action.reshape(nrobot, 2, 3)
             # Limit the action norms
             step = np.sqrt(np.sum(ts_action * ts_action, axis=2)) + 1e-12
             ts_action *= np.minimum(1.0, limits / step)[:, :, None]
             # Add pose offsets to site poses and update mocaps
-            site_xpos = self.data.site_xpos.take(self._mocap_siteid, axis=0)
+            site_xpos = self.data.site_xpos.take(self._siteid, axis=0)
             self.data.mocap_pos[self._mocapid] = site_xpos + ts_action[:, 0]
             quat, xmat = self.data.mocap_quat, self.data.site_xmat
-            for i, (mid, sid) in enumerate(zip(self._mocapid, self._mocap_siteid)):
+            for i, (mid, sid) in enumerate(zip(self._mocapid, self._siteid)):
                 mujoco.mju_mat2Quat(quat[mid], xmat[sid])
                 mujoco.mju_quatIntegrate(quat[mid], ts_action[i, 1], 1.0)
 

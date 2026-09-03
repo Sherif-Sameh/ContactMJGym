@@ -13,7 +13,7 @@ from gymnasium import spaces
 from gymnasium.wrappers.utils import rescale_box
 
 from ..envs.mujoco_base import MujocoBaseEnv
-from ..utils.mj_utils import MJTJOINT_TO_DOF_DIM, MJTJOINT_TO_QPOS_DIM, filter_actuators
+from ..utils.mj_utils import filter_actuators, mjtjoint_to_dof_dim, mjtjoint_to_qpos_dim
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -205,7 +205,7 @@ class TaskSpaceControllerAction(ABC, gym.ActionWrapper):
         kp = np.broadcast_to(cfg.param_cfg.kp, ncontrol).copy()
         damping = np.broadcast_to(cfg.param_cfg.damping, ncontrol).copy()
         # Setup action space
-        action_space_unscaled = self._get_unscaled_action_space(kp)
+        action_space_unscaled = self._get_unscaled_action_space(kp, damping)
         self.action_space, _, self.unscale_action = rescale_box(
             action_space_unscaled, new_min=-1, new_max=1
         )
@@ -300,7 +300,7 @@ class TaskSpaceControllerAction(ABC, gym.ActionWrapper):
         for act in actuators:
             jnt_id = model.actuator_trnid[act, 0]
             qposadr = model.jnt_qposadr[jnt_id]
-            qposdim = MJTJOINT_TO_QPOS_DIM[model.jnt_type[jnt_id]]
+            qposdim = mjtjoint_to_qpos_dim(model.jnt_type[jnt_id])
             qpos_indices.extend(list(range(qposadr, qposadr + qposdim)))
         return TaskSpaceControllerAction._indices_to_slice(qpos_indices), len(qpos_indices)
 
@@ -313,7 +313,7 @@ class TaskSpaceControllerAction(ABC, gym.ActionWrapper):
         for act in actuators:
             jnt_id = model.actuator_trnid[act, 0]
             dofadr = model.jnt_dofadr[jnt_id]
-            dofdim = MJTJOINT_TO_DOF_DIM[model.jnt_type[jnt_id]]
+            dofdim = mjtjoint_to_dof_dim(model.jnt_type[jnt_id])
             dof_indices.extend(list(range(dofadr, dofadr + dofdim)))
         return TaskSpaceControllerAction._indices_to_slice(dof_indices), len(dof_indices)
 
@@ -429,7 +429,7 @@ class TaskSpaceControllerAction(ABC, gym.ActionWrapper):
                 damping,
                 action[tsdim_plus_ncontrol:],
             )
-        if damping == "variable":  # kp_type == fixed
+        if damping_type == "variable":  # kp_type == fixed
             return lambda action: (
                 action[:tsdim],
                 kp,
