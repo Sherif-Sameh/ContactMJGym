@@ -144,6 +144,10 @@ class TaskSpaceControllerAction(ABC, gym.ActionWrapper):
     **Notes**:
     - Wrapper assumes *no other* action wrappers have been already applied to the
         environment.
+    - Wrapper uses a split high-low frequency setup for smooth force control. At the
+        environment stepping rate, only expensive/fixed data needed for control is
+        pre-computed. Then, at the sim stepping rate, joint force commands are computed
+        and written into data.ctrl via `mjcb_control`.
     - To allow force control, wrapper converts all non-user-defined actuators into motor
         actuators with a unit gain. Force ranges are used to update ctrl ranges.
     - By default, no compensation takes place and motion control parameters are fixed.
@@ -163,6 +167,14 @@ class TaskSpaceControllerAction(ABC, gym.ActionWrapper):
             parameters. See :class:`TaskSpaceControllerCfg`.
     """
 
+    @dataclass(slots=True)
+    class MjcbControlData:
+        """Stores pre-computed data required for `mjcb_control` callback."""
+
+        kp: FloatArray | None = None
+        kv: FloatArray | None = None
+        mass_matrix: FloatArray | None = None
+
     def __init__(self, env: MujocoBaseEnv, cfg: TaskSpaceControllerCfg = TaskSpaceControllerCfg()):
         super().__init__(env)
         assert isinstance(env.unwrapped, MujocoBaseEnv), (
@@ -173,10 +185,11 @@ class TaskSpaceControllerAction(ABC, gym.ActionWrapper):
         self.cfg = cfg
         self.model = env.unwrapped.model
         self.data = env.unwrapped.data
-        # Setup action and nv buffers
+        self._mjcb_data = self.MjcbControlData()
+        mujoco.set_mjcb_control(self.mjcb_control)
+        # Setup action and full mass matrix buffers
         self.action_buffer = np.zeros(self.model.nu, dtype=env.action_space.dtype)
-        self._nv_buffer = np.zeros(self.model.nv, dtype=np.float64)
-        self._nv_M_buffer = np.zeros_like(self._nv_buffer)
+        self._mass_matrix = np.zeros((self.model.nv, self.model.nv), dtype=np.float64)
         # Find separate robot and gripper actuator, ctrl and dof ids
         rbt_acts, gri_acts = self._split_model_actuators(self.model, cfg.fltr_acts_kwargs)
         self._rbt_dof_range, rbt_dof_len = self._get_actuator_dof_range(self.model, rbt_acts)
@@ -221,43 +234,57 @@ class TaskSpaceControllerAction(ABC, gym.ActionWrapper):
         Returns:
             The modified actions
         """
-        # Unscale and split action
+        # Prepare mjcb_data for ctrl callback
         action = self.unscale_action(action.clip(-1, 1))
-        ts_action, kp, kp_sqrt, damping, gri_action = self.split_action(action)
-        kv = 2 * kp_sqrt * damping
-        # Update robot ctrls and scale them by generalized mass matrix
-        self._nv_buffer[self._rbt_dof_range] = self.get_robot_ctrl(ts_action, kp, kv)
+        ts_action, self._mjcb_data.kp, kp_sqrt, damping, gri_action = self.split_action(action)
+        self._mjcb_data.kv = 2 * kp_sqrt * damping
         if self.cfg.comp_cfg.mass_mult > 0:
-            mujoco.mj_mulM(self.model, self.data, self._nv_M_buffer, self._nv_buffer)
-            rbt_ctrl = self.cfg.comp_cfg.mass_mult * self._nv_M_buffer[self._rbt_dof_range]
-        else:
-            rbt_ctrl = self._nv_buffer[self._rbt_dof_range]
-        # Set robot ctrl and remaining compensation terms
-        self.action_buffer[self._rbt_ctrl_range] = (
-            rbt_ctrl
-            + self.cfg.comp_cfg.bias_mult * self.data.qfrc_bias[self._rbt_dof_range]
-            - self.cfg.comp_cfg.damp_mult * self.data.qfrc_damper[self._rbt_dof_range]
-            + np.sign(rbt_ctrl) * self._friction_residual
-        )
+            mujoco.mj_fullM(self.model, self.data, self._mass_matrix)
+            self._mjcb_data.mass_matrix = (
+                self.cfg.comp_cfg.mass_mult
+                * self._mass_matrix[self._rbt_dof_range, self._rbt_dof_range]
+            )
+        self.precompute_data(ts_action)
         # Set gripper action
         if self._gri_ctrl_range:
             self.action_buffer[self._gri_ctrl_range] = gri_action
         return self.action_buffer
 
     @abstractmethod
-    def get_robot_ctrl(self, ts_action: FloatArray, kp: FloatArray, kv: FloatArray) -> FloatArray:
-        """Compute the latest robot actuator ctrl signal.
+    def precompute_data(self, ts_action: FloatArray) -> None:
+        """Pre-compute data needed for ctrl computation during mjcb_control callback.
+
+        Called at the same rate as the environment stepping rate (sim_freq // frame_skip).
 
         Args:
             ts_action: Task-space control action for position and orientation.
                 Shape is (6 * `nrobot`).
-            kp: Positional gain (stiffness) for motion control. Shape is (`ncontrol`,).
-            kv: Velocity gain (computed from `kp` and damping ratio) for motion control.
-                Shape is (`ncontrol`,).
-
-        Returns:
-            Robot control signal computed from task-space action and motion control gains.
         """
+        pass
+
+    def mjcb_control(self, model: mujoco.MjModel, data: mujoco.MjData) -> None:
+        """Compute the latest robot actuator ctrl signal.
+
+        Called at the same rate as the simulation stepping rate (sim_freq). Therefore,
+        heavy computations should be offloaded to :func:`precompute_data`.
+        """
+        if self._mjcb_data.kp is None:  # uninitialized data
+            return
+        robot_ctrl = self.get_robot_ctrl(model, data)
+        # Scale latest robot control by generalized mass matrix
+        if self.cfg.comp_cfg.mass_mult > 0:
+            robot_ctrl = self._mjcb_data.mass_matrix @ robot_ctrl
+        # Sum control and compensation terms into ctrl
+        data.ctrl[self._rbt_ctrl_range] = (
+            robot_ctrl
+            + self.cfg.comp_cfg.bias_mult * self.data.qfrc_bias[self._rbt_dof_range]
+            - self.cfg.comp_cfg.damp_mult * self.data.qfrc_damper[self._rbt_dof_range]
+            + np.sign(robot_ctrl) * self._friction_residual
+        )
+
+    @abstractmethod
+    def get_robot_ctrl(self, model: mujoco.MjModel, data: mujoco.MjData) -> FloatArray:
+        """Compute the latest robot actuator ctrl signal."""
         pass
 
     # region Helpers

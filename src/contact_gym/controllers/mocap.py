@@ -80,10 +80,17 @@ class MocapControllerAction(TaskSpaceControllerAction):
             parameters and null-space projection. See :class:`MocapControllerCfg`.
     """
 
+    @dataclass(slots=True)
+    class MjcbControlData(TaskSpaceControllerAction.MjcbControlData):
+        """Stores pre-computed data required for `mjcb_control` callback."""
+
+        null_projector: FloatArray | None = None
+
     def __init__(self, env: MujocoBaseEnv, cfg: MocapControllerCfg = MocapControllerCfg()):
         super().__init__(env, cfg=cfg)
         self._check_cfg(self.model, cfg)
         self.cfg = cfg  # for type-hints
+        self._mjcb_data = self.MjcbControlData()
         # Store robot qpos range
         rbt_acts, _ = self._split_model_actuators(self.model, cfg.fltr_acts_kwargs)
         self._rbt_qpos_range, rbt_qpos_len = self._get_actuator_qpos_range(self.model, rbt_acts)
@@ -117,25 +124,19 @@ class MocapControllerAction(TaskSpaceControllerAction):
             mujoco.mju_mat2Quat(self.data.mocap_quat[mid], self.data.site_xmat[sid])
         return obs, info
 
-    def get_robot_ctrl(self, ts_action: FloatArray, kp: FloatArray, kv: FloatArray) -> FloatArray:
-        """Compute the latest robot actuator ctrl signal.
+    def precompute_data(self, ts_action: FloatArray) -> None:
+        """Pre-compute data needed for ctrl computation during mjcb_control callback.
+
+        Called at the same rate as the environment stepping rate (sim_freq // frame_skip).
 
         Args:
             ts_action: Task-space control action for position and orientation.
                 Shape is (6 * `nrobot`).
-            kp: Positional gain (stiffness) for motion control. Shape is (`ncontrol`,).
-            kv: Velocity gain (computed from `kp` and damping ratio) for motion control.
-                Shape is (`ncontrol`,).
-
-        Returns:
-            Robot control signal computed from task-space action and motion control gains.
         """
+        # Update target mocap poses in-place
         self.mocap_action(ts_action)
-        qpos = self.data.qpos[self._rbt_qpos_range]
-        qvel = self.data.qvel[self._rbt_dof_range]
-        ctrl_reg = kp * (self._qpos_home - qpos) - kv * qvel
+        # Compute Jacobian and null projector
         if self.cfg.null_project:
-            # Compute full Jacobian matrix
             mujoco.mj_jacSite(
                 self.model, self.data, self._jac_full[:3], self._jac_full[3:], self._siteid[0]
             )
@@ -144,12 +145,20 @@ class MocapControllerAction(TaskSpaceControllerAction):
                     self.model, self.data, self._jac_robot[:3], self._jac_robot[3:], siteid
                 )
                 self._jac_full += self._jac_robot
-            # Apply null-space projection
             jac = self._jac_full[:, self._rbt_dof_range]
             jac_pinv = self._get_damped_inverse(jac)
-            null_projector = self._eye - jac_pinv @ jac
-            ctrl_reg = null_projector @ ctrl_reg
-        return ctrl_reg
+            self._mjcb_data.null_projector = self._eye - jac_pinv @ jac
+
+    def get_robot_ctrl(self, model: mujoco.MjModel, data: mujoco.MjData) -> FloatArray:
+        """Compute the latest robot actuator ctrl signal."""
+        # Update configuration regularization ctrl signal
+        qpos = data.qpos[self._rbt_qpos_range]
+        qvel = data.qvel[self._rbt_dof_range]
+        ctrl = self._mjcb_data.kp * (self._qpos_home - qpos) - self._mjcb_data.kv * qvel
+        # Apply null-space projection
+        if self.cfg.null_project:
+            ctrl = self._mjcb_data.null_projector @ ctrl
+        return ctrl
 
     # region Helpers
 
