@@ -92,9 +92,10 @@ class MocapControllerAction(TaskSpaceControllerAction):
             self._qpos_home = self.model.key_qpos[homekey, self._rbt_qpos_range].copy()
         else:
             self._qpos_home = np.zeros(rbt_qpos_len, dtype=np.float64)
-        # Allocate buffers for Jacobian
-        self._jac = np.zeros((6, self.model.nv), dtype=np.float64)
-        self._jac_robot = np.zeros_like(self._jac)
+        # Allocate buffers for null-space projection
+        self._jac_full = np.zeros((6, self.model.nv), dtype=np.float64)
+        self._jac_robot = np.zeros_like(self._jac_full)
+        self._eye = np.eye(rbt_qpos_len, dtype=np.float64)
         # Enable mocap weld constraints and get mocap -> site id mapping
         self._mocapid, self._mocap_siteid = self._setup_mocap_bodies(
             self.model, self.data, cfg.nrobot, cfg.eq_solimp, cfg.eq_solref
@@ -130,24 +131,23 @@ class MocapControllerAction(TaskSpaceControllerAction):
             Robot control signal computed from task-space action and motion control gains.
         """
         self.mocap_action(ts_action)
-        ctrl_reg = (
-            kp * (self._qpos_home - self.data.qpos[self._rbt_qpos_range])
-            - kv * self.data.qvel[self._rbt_dof_range]
-        )
+        qpos = self.data.qpos[self._rbt_qpos_range]
+        qvel = self.data.qvel[self._rbt_dof_range]
+        ctrl_reg = kp * (self._qpos_home - qpos) - kv * qvel
         if self.cfg.null_project:
             # Compute full Jacobian matrix
             mujoco.mj_jacSite(
-                self.model, self.data, self._jac[:3], self._jac[3:], self._mocap_siteid[0]
+                self.model, self.data, self._jac_full[:3], self._jac_full[3:], self._mocap_siteid[0]
             )
             for siteid in self._mocap_siteid[1:]:  # robots assumed independent
                 mujoco.mj_jacSite(
                     self.model, self.data, self._jac_robot[:3], self._jac_robot[3:], siteid
                 )
-                self._jac += self._jac_robot
+                self._jac_full += self._jac_robot
             # Apply null-space projection
-            null_projector = self._get_nullspace_projector(
-                self._jac[self._rbt_dof_range, self._rbt_dof_range]
-            )
+            jac = self._jac_full[:, self._rbt_dof_range]
+            jac_pinv = self._get_damped_inverse(jac)
+            null_projector = self._eye - jac_pinv @ jac
             ctrl_reg = null_projector @ ctrl_reg
         return ctrl_reg
 
@@ -223,9 +223,10 @@ class MocapControllerAction(TaskSpaceControllerAction):
 
         return mocap_action
 
-    def _get_nullspace_projector(self, jac: FloatArray) -> FloatArray:
-        """Compute the damped Moore-Penrose pseudoinverse of the Jacobian using its SVD."""
-        U, S, Vt = np.linalg.svd(jac, full_matrices=False)
+    def _get_damped_inverse(self, mat: FloatArray) -> FloatArray:
+        """Compute the damped inverse or Moore-Penrose pseudoinverse of the input
+        matrix using its SVD."""
+        U, S, Vt = np.linalg.svd(mat, full_matrices=False)
         # Apply variable damping to small singular values
         lambda_sqr = np.where(
             S < self.cfg.sigma_thr,
@@ -233,6 +234,5 @@ class MocapControllerAction(TaskSpaceControllerAction):
             0.0,
         )
         S_damped = S / (S**2 + lambda_sqr)
-        jac_pinv = (Vt.T * S_damped) @ U.T
-        null_projector = np.eye(jac_pinv.shape[1]) - jac_pinv @ jac
-        return null_projector
+        mat_inv = (Vt.T * S_damped) @ U.T
+        return mat_inv
