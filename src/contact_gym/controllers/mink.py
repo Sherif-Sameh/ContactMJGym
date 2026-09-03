@@ -130,26 +130,8 @@ class MinkControllerAction(TaskSpaceControllerAction):
         import mink  # ensure mink is installed
 
         super().__init__(env, cfg=cfg)
+        self._check_cfg(self.model, cfg)
         self.cfg = cfg  # for type-hints
-        assert cfg.param_cfg.param_space == "joint", (
-            "Mink controller only supports joint-space parameters."
-        )
-        assert cfg.nrobot == len(cfg.mink_cfg.sites), (
-            "Number of robots in config does not match number of target sites. "
-            f"Got {cfg.nrobot} robots and {len(cfg.mink_cfg.sites)} sites."
-        )
-        assert len(cfg.mink_cfg.sites) == len(cfg.mink_cfg.mocaps), (
-            "Expected matching end-effector sites and mocap bodies. "
-            f"Got {len(cfg.mink_cfg.sites)} sites and {len(cfg.mink_cfg.mocaps)} mocaps."
-        )
-        assert all(
-            mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_SITE, site) >= 0
-            for site in cfg.mink_cfg.sites
-        )
-        assert all(
-            mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_BODY, mocap) >= 0
-            for mocap in cfg.mink_cfg.mocaps
-        )
         # Store target site and visualization mocap ids
         self._siteid = [self.model.site(site).id for site in cfg.mink_cfg.sites]
         self._mocapid = [
@@ -215,6 +197,31 @@ class MinkControllerAction(TaskSpaceControllerAction):
             - kv * self.data.qvel[self._rbt_dof_range]
         )
         return ctrl
+
+    # region Helpers
+
+    @staticmethod
+    def _check_cfg(model: mujoco.MjModel, cfg: MinkControllerCfg) -> None:
+        """Perform validity checks on controller configuration."""
+        assert cfg.param_cfg.param_space == "joint", (
+            "Mink controller only supports joint-space parameters."
+        )
+        assert cfg.nrobot == len(cfg.mink_cfg.sites), (
+            "Number of robots in config does not match number of target sites. "
+            f"Got {cfg.nrobot} robots and {len(cfg.mink_cfg.sites)} sites."
+        )
+        assert len(cfg.mink_cfg.sites) == len(cfg.mink_cfg.mocaps), (
+            "Expected matching end-effector sites and mocap bodies. "
+            f"Got {len(cfg.mink_cfg.sites)} sites and {len(cfg.mink_cfg.mocaps)} mocaps."
+        )
+        assert all(
+            mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_SITE, site) >= 0
+            for site in cfg.mink_cfg.sites
+        ), "Not all end-effector site names are valid. Check mink configuration."
+        assert all(
+            mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, mocap) >= 0
+            for mocap in cfg.mink_cfg.mocaps
+        ), "Not all end-effector mocap body names are valid. Check mink configuration."
 
     # region Action Helpers
 

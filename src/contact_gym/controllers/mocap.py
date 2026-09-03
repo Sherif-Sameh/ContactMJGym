@@ -82,11 +82,8 @@ class MocapControllerAction(TaskSpaceControllerAction):
 
     def __init__(self, env: MujocoBaseEnv, cfg: MocapControllerCfg = MocapControllerCfg()):
         super().__init__(env, cfg=cfg)
+        self._check_cfg(self.model, cfg)
         self.cfg = cfg  # for type-hints
-        assert cfg.param_cfg.param_space == "joint", (
-            "Mocap controller only supports joint-space parameters."
-        )
-        assert env.unwrapped.model.nmocap >= cfg.nrobot
         # Store robot qpos range
         rbt_acts, _ = self._split_model_actuators(self.model, cfg.fltr_acts_kwargs)
         self._rbt_qpos_range, rbt_qpos_len = self._get_actuator_qpos_range(self.model, rbt_acts)
@@ -155,6 +152,14 @@ class MocapControllerAction(TaskSpaceControllerAction):
         return ctrl_reg
 
     # region Helpers
+
+    @staticmethod
+    def _check_cfg(model: mujoco.MjModel, cfg: MocapControllerCfg) -> None:
+        """Perform validity checks on controller configuration."""
+        assert cfg.param_cfg.param_space == "joint", (
+            "Mocap controller only supports joint-space parameters."
+        )
+        assert model.nmocap >= cfg.nrobot
 
     @staticmethod
     def _setup_mocap_bodies(
