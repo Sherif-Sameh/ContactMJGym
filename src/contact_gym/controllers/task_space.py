@@ -13,7 +13,7 @@ from gymnasium import spaces
 from gymnasium.wrappers.utils import rescale_box
 
 from ..envs.mujoco_base import MujocoBaseEnv
-from ..utils.mj_utils import MJTJOINT_TO_DOF_DIM, filter_actuators
+from ..utils.mj_utils import MJTJOINT_TO_DOF_DIM, MJTJOINT_TO_QPOS_DIM, filter_actuators
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -179,8 +179,8 @@ class TaskSpaceControllerAction(ABC, gym.ActionWrapper):
         self._nv_M_buffer = np.zeros_like(self._nv_buffer)
         # Find separate robot and gripper actuator, ctrl and dof ids
         rbt_acts, gri_acts = self._split_model_actuators(self.model, cfg.fltr_acts_kwargs)
-        self._rbt_ctrl_range, rbt_ctrl_len = self._get_actuators_ctrl_range(self.model, rbt_acts)
         self._rbt_dof_range, rbt_dof_len = self._get_actuator_dof_range(self.model, rbt_acts)
+        self._rbt_ctrl_range, rbt_ctrl_len = self._get_actuators_ctrl_range(self.model, rbt_acts)
         self._gri_ctrl_range, _ = self._get_actuators_ctrl_range(self.model, gri_acts)
         assert rbt_ctrl_len == rbt_dof_len, (
             f"Robot nu must be equal to nv. Got {rbt_ctrl_len} and {rbt_dof_len}."
@@ -292,16 +292,17 @@ class TaskSpaceControllerAction(ABC, gym.ActionWrapper):
         return robot_actuators, gripper_actuators
 
     @staticmethod
-    def _get_actuators_ctrl_range(
+    def _get_actuator_qpos_range(
         model: mujoco.MjModel, actuators: list[int]
     ) -> tuple[slice | tuple[int, ...], int]:
-        """Get the range (slice or indices) that correspond to the given actuators in ctrl."""
-        ctrl_indices = []
+        """Get the range (slice or indices) that correspond to the given actuators in qpos."""
+        qpos_indices = []
         for act in actuators:
-            ctrladr = model.actuator_ctrladr[act]
-            ctrlnum = model.actuator_ctrlnum[act]
-            ctrl_indices.extend(list(range(ctrladr, ctrladr + ctrlnum)))
-        return TaskSpaceControllerAction._indices_to_slice(ctrl_indices), len(ctrl_indices)
+            jnt_id = model.actuator_trnid[act, 0]
+            qposadr = model.jnt_qposadr[jnt_id]
+            qposdim = MJTJOINT_TO_QPOS_DIM[model.jnt_type[jnt_id]]
+            qpos_indices.extend(list(range(qposadr, qposadr + qposdim)))
+        return TaskSpaceControllerAction._indices_to_slice(qpos_indices), len(qpos_indices)
 
     @staticmethod
     def _get_actuator_dof_range(
@@ -315,6 +316,18 @@ class TaskSpaceControllerAction(ABC, gym.ActionWrapper):
             dofdim = MJTJOINT_TO_DOF_DIM[model.jnt_type[jnt_id]]
             dof_indices.extend(list(range(dofadr, dofadr + dofdim)))
         return TaskSpaceControllerAction._indices_to_slice(dof_indices), len(dof_indices)
+
+    @staticmethod
+    def _get_actuators_ctrl_range(
+        model: mujoco.MjModel, actuators: list[int]
+    ) -> tuple[slice | tuple[int, ...], int]:
+        """Get the range (slice or indices) that correspond to the given actuators in ctrl."""
+        ctrl_indices = []
+        for act in actuators:
+            ctrladr = model.actuator_ctrladr[act]
+            ctrlnum = model.actuator_ctrlnum[act]
+            ctrl_indices.extend(list(range(ctrladr, ctrladr + ctrlnum)))
+        return TaskSpaceControllerAction._indices_to_slice(ctrl_indices), len(ctrl_indices)
 
     @staticmethod
     def _setup_frictionloss_and_gravcomp(

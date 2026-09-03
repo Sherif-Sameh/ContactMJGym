@@ -11,7 +11,6 @@ try:
 except ImportError:
     pass  # don't force onto users of other controllers
 
-from ..utils.mj_utils import MJTJOINT_TO_QPOS_DIM
 from .task_space import TaskSpaceControllerAction, TaskSpaceControllerCfg
 
 if TYPE_CHECKING:
@@ -216,21 +215,6 @@ class MinkControllerAction(TaskSpaceControllerAction):
             - kv * self.data.qvel[self._rbt_dof_range]
         )
         return ctrl
-
-    # region Helpers
-
-    @staticmethod
-    def _get_actuator_qpos_range(
-        model: mujoco.MjModel, actuators: list[int]
-    ) -> tuple[slice | tuple[int, ...], int]:
-        """Get the range (slice or indices) that correspond to the given actuators in qpos."""
-        qpos_indices = []
-        for act in actuators:
-            jnt_id = model.actuator_trnid[act, 0]
-            qposadr = model.jnt_qposadr[jnt_id]
-            qposdim = MJTJOINT_TO_QPOS_DIM[model.jnt_type[jnt_id]]
-            qpos_indices.extend(list(range(qposadr, qposadr + qposdim)))
-        return MinkControllerAction._indices_to_slice(qpos_indices), len(qpos_indices)
 
     # region Action Helpers
 

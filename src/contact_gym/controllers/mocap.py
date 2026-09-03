@@ -6,7 +6,6 @@ from typing import TYPE_CHECKING, Any, Callable
 import mujoco
 import numpy as np
 
-from ..utils.mj_utils import MJTJOINT_TO_QPOS_DIM
 from .task_space import TaskSpaceControllerAction, TaskSpaceControllerCfg
 
 if TYPE_CHECKING:
@@ -138,7 +137,7 @@ class MocapControllerAction(TaskSpaceControllerAction):
             kp * (self._qpos_home - self.data.qpos[self._rbt_qpos_range])
             - kv * self.data.qvel[self._rbt_dof_range]
         )
-        if self.null_project:
+        if self.cfg.null_project:
             # Compute full Jacobian matrix
             mujoco.mj_jacSite(
                 self.model, self.data, self._jac[:3], self._jac[3:], self._mocap_siteid[0]
@@ -156,19 +155,6 @@ class MocapControllerAction(TaskSpaceControllerAction):
         return ctrl_reg
 
     # region Helpers
-
-    @staticmethod
-    def _get_actuator_qpos_range(
-        model: mujoco.MjModel, actuators: list[int]
-    ) -> tuple[slice | tuple[int, ...], int]:
-        """Get the range (slice or indices) that correspond to the given actuators in qpos."""
-        qpos_indices = []
-        for act in actuators:
-            jnt_id = model.actuator_trnid[act, 0]
-            qposadr = model.jnt_qposadr[jnt_id]
-            qposdim = MJTJOINT_TO_QPOS_DIM[model.jnt_type[jnt_id]]
-            qpos_indices.extend(list(range(qposadr, qposadr + qposdim)))
-        return MocapControllerAction._indices_to_slice(qpos_indices), len(qpos_indices)
 
     @staticmethod
     def _setup_mocap_bodies(
