@@ -1,10 +1,16 @@
 """Registry for controllers."""
 
-from .mink import MinkCfg, MinkControllerAction
-from .mocap import MocapControllerAction
-from .task_space import TaskSpaceControllerCfg
+from .mink import MinkControllerAction, MinkControllerCfg
+from .mocap import MocapControllerAction, MocapControllerCfg
 
 # Supported controllers
-ALL_CONTROLLERS = ("mocap", "mink")
+ALL_CONTROLLERS = ("mink", "mocap")
+CONTROLLER_TO_CLS = {"mink": MinkControllerAction, "mocap": MocapControllerAction}
+CONTROLLER_TO_CFG_CLS = {"mink": MinkControllerCfg, "mocap": MocapControllerCfg}
 
-__all__ = ["MinkCfg", "MinkControllerAction", "MocapControllerAction", "TaskSpaceControllerCfg"]
+__all__ = [
+    "MinkControllerAction",
+    "MinkControllerCfg",
+    "MocapControllerAction",
+    "MocapControllerCfg",
+]

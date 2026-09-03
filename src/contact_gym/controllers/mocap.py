@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Callable
 
 import mujoco
@@ -13,6 +14,34 @@ if TYPE_CHECKING:
 
     from ..envs.mujoco_base import InfoType, MujocoBaseEnv, ObsType
     from .task_space import FloatArray
+
+
+# region Config
+
+
+@dataclass(slots=True)
+class MocapControllerCfg(TaskSpaceControllerCfg):
+    """Mocap task-space controller action wrapper configuration."""
+
+    eq_solimp: Sequence[float] | None = None
+    """Optional solver impedence parameters for overriding weld equality constraint
+    parameters. Default value is None."""
+
+    eq_solref: Sequence[float] | None = None
+    """Optional solver reference parameters for overriding weld equality constraint
+    parameters. Default value is None."""
+
+    null_project: bool = False
+    """If True, apply null-space projection to regularization joint accelerations.
+    Default value is False."""
+
+    sigma_damp: float = 1e-3
+    """Damping factor for singular values when computing Moore-Penrose pseudoinverse
+    of the Jacobian via the SVD. Default value is 1e-3."""
+
+    sigma_thr: float = 1e-5
+    """Singular value threshold for applying damping when computing Moore-Penrose
+    pseudoinverse of the Jacobian via the SVD. Default value is 1e-5."""
 
 
 # region Controller
@@ -48,38 +77,17 @@ class MocapControllerAction(TaskSpaceControllerAction):
     Args:
         env: The MuJoCo-based manipulation environment to wrap. Must define mocap bodies
             welded to sites via site-to-site equality constraints.
-        cfg: Configuration for task-space actions, compensation terms and motion control
-            parameters. See :class:`TaskSpaceControllerCfg`.
-        solimp: Optional solver impedence parameters for overriding weld equality
-            constraint parameters. Default value is None.
-        solref: Optional solver reference parameters for overriding weld equality
-            constraint parameters. Default value is None.
-        null_project: If True, apply null-space projection to regularization joint
-            accelerations. Default value is False.
-        sigma_damp: Damping factor for singular values when computing Moore-Penrose
-            pseudoinverse of the Jacobian via the SVD. Default value is 1e-3.
-        sigma_thr: Singular value threshold for applying damping when computing
-            Moore-Penrose pseudoinverse of the Jacobian via the SVD. Default value is 1e-5.
+        cfg: Configuration for task-space actions, compensation terms, motion control
+            parameters and null-space projection. See :class:`MocapControllerCfg`.
     """
 
-    def __init__(
-        self,
-        env: MujocoBaseEnv,
-        cfg: TaskSpaceControllerCfg = TaskSpaceControllerCfg(),
-        solimp: Sequence[float] | None = None,
-        solref: Sequence[float] | None = None,
-        null_project: bool = False,
-        sigma_damp: float = 1e-3,
-        sigma_thr: float = 1e-5,
-    ):
+    def __init__(self, env: MujocoBaseEnv, cfg: MocapControllerCfg = MocapControllerCfg()):
         super().__init__(env, cfg=cfg)
+        self.cfg = cfg  # for type-hints
         assert cfg.param_cfg.param_space == "joint", (
             "Mocap controller only supports joint-space parameters."
         )
         assert env.unwrapped.model.nmocap >= cfg.nrobot
-        self.null_project = null_project
-        self.sigma_damp = sigma_damp
-        self.sigma_thr = sigma_thr
         # Store robot qpos range
         rbt_acts, _ = self._split_model_actuators(self.model, cfg.fltr_acts_kwargs)
         self._rbt_qpos_range, rbt_qpos_len = self._get_actuator_qpos_range(self.model, rbt_acts)
@@ -93,7 +101,7 @@ class MocapControllerAction(TaskSpaceControllerAction):
         self._jac_robot = np.zeros_like(self._jac)
         # Enable mocap weld constraints and get mocap -> site id mapping
         self._mocapid, self._mocap_siteid = self._setup_mocap_bodies(
-            self.model, self.data, cfg.nrobot, solimp, solref
+            self.model, self.data, cfg.nrobot, cfg.eq_solimp, cfg.eq_solref
         )
         # Build action function for mocap bodies
         self.mocap_action = self._build_mocap_action()
@@ -229,7 +237,9 @@ class MocapControllerAction(TaskSpaceControllerAction):
         U, S, Vt = np.linalg.svd(jac, full_matrices=False)
         # Apply variable damping to small singular values
         lambda_sqr = np.where(
-            S < self.sigma_thr, self.sigma_damp**2 * (1.0 - (S / self.sigma_thr) ** 2), 0.0
+            S < self.cfg.sigma_thr,
+            self.cfg.sigma_damp**2 * (1.0 - (S / self.cfg.sigma_thr) ** 2),
+            0.0,
         )
         S_damped = S / (S**2 + lambda_sqr)
         jac_pinv = (Vt.T * S_damped) @ U.T

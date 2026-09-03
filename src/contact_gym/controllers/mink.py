@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from typing import TYPE_CHECKING, Any, Callable
 
 import mujoco
@@ -19,71 +19,84 @@ if TYPE_CHECKING:
     from .task_space import FloatArray
 
 
-# region MinkCfg
+# region Config
 
 
-@dataclass(frozen=True, slots=True)
-class MinkCfg:
-    """Configuration for the mink tasks, IK solver, thresholds, etc."""
+@dataclass(slots=True)
+class MinkControllerCfg(TaskSpaceControllerCfg):
+    """Mink task-space controller action wrapper configuration."""
 
-    sites: tuple[str, ...] = ("gripper-tcp",)
-    """Names of end-effector sites to control. A single site is expected per robot.
-    Default value is ("gripper-tcp",)."""
+    @dataclass(frozen=True, slots=True)
+    class MinkCfg:
+        """Configuration for the mink tasks, IK solver, thresholds, etc."""
 
-    mocaps: tuple[str, ...] = ("mocap",)
-    """Names of mocap bodies for target visualization. A single mocap is expected per robot.
-    Default value is ("mocap",)."""
+        sites: tuple[str, ...] = ("gripper-tcp",)
+        """Names of end-effector sites to control. A single site is expected per robot.
+        Default value is ("gripper-tcp",)."""
 
-    max_iters: int = 5
-    """Maximum number of iterations for solving IK per action. Default value is 5."""
+        mocaps: tuple[str, ...] = ("mocap",)
+        """Names of mocap bodies for target visualization. A single mocap is expected per
+        robot. Default value is ("mocap",)."""
 
-    dt: float = 5e-3
-    """Integration timestep for IK solver in seconds. If < 0, the sim's dt is used
-    instead. Default value is 5e-3."""
+        max_iters: int = 5
+        """Maximum number of iterations for solving IK per action. Default value is 5."""
 
-    solver: str = "daqp"
-    """Backend QP solver used to solve IK. Default value is daqp."""
+        dt: float = 5e-3
+        """Integration timestep for IK solver in seconds. If < 0, the sim's dt is used
+        instead. Default value is 5e-3."""
 
-    damping: float = 1e-5
-    """LM damping applied to all tasks when solving IK. Default value is 1e-5."""
+        solver: str = "daqp"
+        """Backend QP solver used to solve IK. Default value is daqp."""
 
-    pos_thr: float = 1e-3
-    """Position error threshold in meters for early termination. Default value is 1e-3."""
+        damping: float = 1e-5
+        """LM damping applied to all tasks when solving IK. Default value is 1e-5."""
 
-    ori_thr: float = 1.5e-3
-    """Orientation error threshold in radians for early termination. Default value is 1.5e-3."""
+        pos_thr: float = 1e-3
+        """Position error threshold in meters for early termination.
+        Default value is 1e-3."""
 
-    @dataclass(frozen=True)
-    class FrameTaskCfg:
+        ori_thr: float = 1.5e-3
+        """Orientation error threshold in radians for early termination.
+        Default value is 1.5e-3."""
+
+        @dataclass(frozen=True)
+        class FrameTaskCfg:
+            """Configuration for the main :class:`mink.FrameTask` pose tracking tasks."""
+
+            position_cost: float = 1.0
+            orientation_cost: float = 1.0
+            lm_damping: float = 1.0
+
+        frame_task_cfg: FrameTaskCfg = FrameTaskCfg()
         """Configuration for the main :class:`mink.FrameTask` pose tracking tasks."""
 
-        position_cost: float = 1.0
-        orientation_cost: float = 1.0
-        lm_damping: float = 1.0
+        @dataclass(frozen=True)
+        class PostureTaskCfg:
+            """Configuration for the :class:`mink.PostureTask` regularization task."""
 
-    frame_task_cfg: FrameTaskCfg = FrameTaskCfg()
-    """Configuration for the main :class:`mink.FrameTask` pose tracking tasks."""
+            cost: float = 0.05
+            gain: float = 1.0
+            lm_damping: float = 0.0
 
-    @dataclass(frozen=True)
-    class PostureTaskCfg:
+        posture_task_cfg: PostureTaskCfg = PostureTaskCfg()
         """Configuration for the :class:`mink.PostureTask` regularization task."""
 
-        cost: float = 0.05
-        gain: float = 1.0
-        lm_damping: float = 0.0
+        @dataclass(frozen=True)
+        class ConfigurationLimitCfg:
+            """Configuration for the :class:`mink.ConfigurationLimit` limit."""
 
-    posture_task_cfg: PostureTaskCfg = PostureTaskCfg()
-    """Configuration for the :class:`mink.PostureTask` regularization task."""
+            gain: float = 0.95
+            min_distance_from_limits: float = 0
 
-    @dataclass(frozen=True)
-    class ConfigurationLimitCfg:
+        configuration_limit_cfg: ConfigurationLimitCfg = ConfigurationLimitCfg()
         """Configuration for the :class:`mink.ConfigurationLimit` limit."""
 
-        gain: float = 0.95
-        min_distance_from_limits: float = 0
+    mink_cfg: MinkCfg = MinkCfg()
+    """Configuration for the mink tasks, IK solver, thresholds, etc. See :class:`MinkCfg`."""
 
-    configuration_limit_cfg: ConfigurationLimitCfg = ConfigurationLimitCfg()
-    """Configuration for the :class:`mink.ConfigurationLimit` limit."""
+    aux_limits: list[mink.Limit] = field(default_factory=list)
+    """Auxiliary limits to add to the default :class:`mink.ConfigurationLimit`.
+    Default value is an empty list."""
 
 
 # region Controller
@@ -110,59 +123,49 @@ class MinkControllerAction(TaskSpaceControllerAction):
     Args:
         env: The MuJoCo-based manipulation environment to wrap. Must define matching
             mocap bodies for every end-effector site.
-        cfg: Configuration for task-space actions, compensation terms and motion control
-            parameters. See :class:`TaskSpaceControllerCfg`.
-        mink_cfg: Mink configuration. Determines sites, mocaps, solver config, error
-            thresholds, and task + limit configs. If None, default values are used.
-            Default value is None.
-        aux_limits: Auxiliary limits to add to the default :class:`mink.ConfigurationLimit`.
-            Default value is [].
+        cfg: Configuration for task-space actions, compensation terms, motion control
+            parameters and `mink`. See :class:`MinkControllerCfg`.
     """
 
-    def __init__(
-        self,
-        env: MujocoBaseEnv,
-        cfg: TaskSpaceControllerCfg = TaskSpaceControllerCfg(),
-        mink_cfg: MinkCfg = MinkCfg(),
-        aux_limits: list[mink.Limit] = [],
-    ) -> None:
+    def __init__(self, env: MujocoBaseEnv, cfg: MinkControllerCfg = MinkControllerCfg()) -> None:
         import mink  # ensure mink is installed
 
         super().__init__(env, cfg=cfg)
+        self.cfg = cfg  # for type-hints
         assert cfg.param_cfg.param_space == "joint", (
             "Mink controller only supports joint-space parameters."
         )
-        assert cfg.nrobot == len(mink_cfg.sites), (
+        assert cfg.nrobot == len(cfg.mink_cfg.sites), (
             "Number of robots in config does not match number of target sites. "
-            f"Got {cfg.nrobot} robots and {len(mink_cfg.sites)} sites."
+            f"Got {cfg.nrobot} robots and {len(cfg.mink_cfg.sites)} sites."
         )
-        assert len(mink_cfg.sites) == len(mink_cfg.mocaps), (
+        assert len(cfg.mink_cfg.sites) == len(cfg.mink_cfg.mocaps), (
             "Expected matching end-effector sites and mocap bodies. "
-            f"Got {len(mink_cfg.sites)} sites and {len(mink_cfg.mocaps)} mocaps."
+            f"Got {len(cfg.mink_cfg.sites)} sites and {len(cfg.mink_cfg.mocaps)} mocaps."
         )
         assert all(
             mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_SITE, site) >= 0
-            for site in mink_cfg.sites
+            for site in cfg.mink_cfg.sites
         )
         assert all(
             mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_BODY, mocap) >= 0
-            for mocap in mink_cfg.mocaps
+            for mocap in cfg.mink_cfg.mocaps
         )
         # Store target site and visualization mocap ids
-        self._siteid = [self.model.site(site).id for site in mink_cfg.sites]
+        self._siteid = [self.model.site(site).id for site in cfg.mink_cfg.sites]
         self._mocapid = [
-            self.model.body_mocapid[self.model.body(mocap).id] for mocap in mink_cfg.mocaps
+            self.model.body_mocapid[self.model.body(mocap).id] for mocap in cfg.mink_cfg.mocaps
         ]
         # Setup mink configuration, tasks, and limits
         self._configuration = mink.Configuration(self.model)
         self._tasks = [
-            mink.FrameTask(site, "site", **asdict(mink_cfg.frame_task_cfg))
-            for site in mink_cfg.sites
-        ] + [mink.PostureTask(self.model, **asdict(mink_cfg.posture_task_cfg))]
+            mink.FrameTask(site, "site", **asdict(cfg.mink_cfg.frame_task_cfg))
+            for site in cfg.mink_cfg.sites
+        ] + [mink.PostureTask(self.model, **asdict(cfg.mink_cfg.posture_task_cfg))]
         self._frame_tasks = self._tasks[:-1]
         self._limits = [
-            mink.ConfigurationLimit(self.model, **asdict(mink_cfg.configuration_limit_cfg))
-        ] + aux_limits
+            mink.ConfigurationLimit(self.model, **asdict(cfg.mink_cfg.configuration_limit_cfg))
+        ] + cfg.aux_limits
         # Store robot qpos range
         rbt_acts, _ = self._split_model_actuators(self.model, cfg.fltr_acts_kwargs)
         self._rbt_qpos_range, _ = self._get_actuator_qpos_range(self.model, rbt_acts)
@@ -174,7 +177,7 @@ class MinkControllerAction(TaskSpaceControllerAction):
         self._configuration.update(qpos_home)
         self._tasks[-1].set_target_from_configuration(self._configuration)
         # Build action function to compute target qpos via mink
-        self.mink_action = self._build_mink_action(mink_cfg)
+        self.mink_action = self._build_mink_action()
 
     def reset(
         self, *, seed: int | None = None, options: dict[str, Any] | None = None
@@ -231,9 +234,10 @@ class MinkControllerAction(TaskSpaceControllerAction):
 
     # region Action Helpers
 
-    def _build_mink_action(self, mink_cfg: MinkCfg) -> Callable[[FloatArray], FloatArray]:
+    def _build_mink_action(self) -> Callable[[FloatArray], FloatArray]:
         """Build the action function to solve IK via mink and compute target qpos given
         the current task-space action."""
+        mink_cfg = self.cfg.mink_cfg
         dt = self.model.opt.timestep if mink_cfg.dt <= 0 else mink_cfg.dt
         pos_thr_sqr, ori_thr_sqr = mink_cfg.pos_thr**2, mink_cfg.ori_thr**2
         limits = np.array([self.cfg.max_tstep, self.cfg.max_rstep]).reshape(1, 2)
