@@ -168,14 +168,12 @@ class MinkControllerAction(TaskSpaceControllerAction):
         """
         obs, info = self.env.reset(seed=seed, options=options)
         # Reset frame tasks and mocap
-        for i, task in enumerate(self._frame_tasks):
-            sid, mid = self._siteid[i], self._mocapid[i]
+        for task, sid, mid in zip(self._frame_tasks, self._mocapid, self._siteid):
             site_xpos, site_xmat = self.data.site_xpos[sid], self.data.site_xmat[sid]
             mocap_pos, mocap_quat = self.data.mocap_pos[mid], self.data.mocap_quat[mid]
-            site_quat = np.empty(4)
-            mujoco.mju_mat2Quat(site_quat, site_xmat)
-            task.set_target(mink.SE3(wxyz_xyz=np.concatenate([site_quat, site_xpos])))
-            mocap_pos[:], mocap_quat[:] = site_xpos, site_quat
+            mocap_pos[:] = site_xpos
+            mujoco.mju_mat2Quat(mocap_quat, site_xmat)
+            task.set_target(mink.SE3(wxyz_xyz=np.concatenate([mocap_quat, mocap_pos])))
         return obs, info
 
     def get_robot_ctrl(self, ts_action: FloatArray, kp: FloatArray, kv: FloatArray) -> FloatArray:
@@ -253,20 +251,20 @@ class MinkControllerAction(TaskSpaceControllerAction):
         return mink_action
 
     def _update_frame_targets(self, ts_action: FloatArray, limits: FloatArray) -> None:
-        """Update frame tasks targets using current targets and action."""
+        """Update frame tasks targets using the current site poses and task-space actions."""
         ts_action = ts_action.reshape(self.cfg.nrobot, 2, 3)
         # Limit the action norms
         step = np.sqrt(np.sum(ts_action * ts_action, axis=2)) + 1e-12
         ts_action *= np.minimum(1.0, limits / step)[:, :, None]
-        # Add pose offsets to target poses in place and update mocaps
-        for i, task in enumerate(self._frame_tasks):
-            mid = self._mocapid[i]
+        # Add pose offsets to site poses in place and update mocaps and targets
+        for i, (task, sid, mid) in enumerate(zip(self._frame_tasks, self._mocapid, self._siteid)):
+            site_xpos, site_xmat = self.data.site_xpos[sid], self.data.site_xmat[sid]
             mocap_pos, mocap_quat = self.data.mocap_pos[mid], self.data.mocap_quat[mid]
-            target = task.transform_target_to_world
-            tgt_quat, tgt_pos = target.wxyz_xyz[:4], target.wxyz_xyz[4:]
-            tgt_pos += ts_action[i, 0]
-            mujoco.mju_quatIntegrate(tgt_quat, ts_action[i, 1], 1.0)
-            mocap_pos[:], mocap_quat[:] = tgt_pos, tgt_quat
+            mocap_pos[:] = site_xpos + ts_action[i, 0]
+            mujoco.mju_mat2Quat(mocap_quat, site_xmat)
+            mujoco.mju_quatIntegrate(mocap_quat, ts_action[i, 1], 1.0)
+            target = task.transform_target_to_world.wxyz_xyz
+            target[:4], target[4:] = mocap_quat, mocap_pos
 
     def _has_converged(self, pos_threshold_sqr: float, ori_threshold_sqr: float) -> bool:
         """Check whether all frame tasks have converged according to the set error thresholds."""

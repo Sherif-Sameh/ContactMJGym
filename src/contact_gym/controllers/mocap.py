@@ -205,8 +205,8 @@ class MocapControllerAction(TaskSpaceControllerAction):
     # region Action Helpers
 
     def _build_mocap_action(self) -> Callable[[FloatArray], None]:
-        """Build the mocap action function to update mocap poses given the current
-        task-space action."""
+        """Build the mocap action function to update mocap poses based-on the current
+        site poses and the given task-space action."""
         nmocap = len(self._mocap_siteid)
         limits = np.array([self.cfg.max_tstep, self.cfg.max_rstep]).reshape(1, 2)
 
@@ -215,10 +215,12 @@ class MocapControllerAction(TaskSpaceControllerAction):
             # Limit the action norms
             step = np.sqrt(np.sum(ts_action * ts_action, axis=2)) + 1e-12
             ts_action *= np.minimum(1.0, limits / step)[:, :, None]
-            # Add pose offsets to mocap poses in place
-            self.data.mocap_pos[self._mocapid] += ts_action[:, 0]
-            quat = self.data.mocap_quat
-            for i, mid in enumerate(self._mocapid):
+            # Add pose offsets to site poses and update mocaps
+            site_xpos = self.data.site_xpos.take(self._mocap_siteid, axis=0)
+            self.data.mocap_pos[self._mocapid] = site_xpos + ts_action[:, 0]
+            quat, xmat = self.data.mocap_quat, self.data.site_xmat
+            for i, (mid, sid) in enumerate(zip(self._mocapid, self._mocap_siteid)):
+                mujoco.mju_mat2Quat(quat[mid], xmat[sid])
                 mujoco.mju_quatIntegrate(quat[mid], ts_action[i, 1], 1.0)
 
         return mocap_action

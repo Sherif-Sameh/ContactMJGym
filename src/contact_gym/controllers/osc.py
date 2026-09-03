@@ -296,14 +296,11 @@ class OscControllerAction(TaskSpaceControllerAction):
             mat, shape=new_shape, strides=new_strides, writeable=False
         )
 
-    def _build_get_pose_error(self) -> Callable[[FloatArray], None]:
-        """Build the function to update target mocap poses given the current task-space
-        action and compute the pose error from the current site poses."""
+    def _build_get_pose_error(self) -> Callable[[FloatArray], FloatArray]:
+        """Build the function to update mocap poses based-on the current site poses
+        and the given task-space action and compute the pose error."""
         nrobot = self.cfg.nrobot
         limits = np.array([self.cfg.max_tstep, self.cfg.max_rstep]).reshape(1, 2)
-        pos_err = np.zeros((nrobot, 3), dtype=np.float64)
-        ori_err = np.zeros((nrobot, 3), dtype=np.float64)
-        site_quat = np.zeros(4, dtype=np.float64)
 
         def get_pose_error(ts_action: FloatArray) -> FloatArray:
             ts_action = ts_action.reshape(nrobot, 2, 3)
@@ -312,15 +309,13 @@ class OscControllerAction(TaskSpaceControllerAction):
             ts_action *= np.minimum(1.0, limits / step)[:, :, None]
             # Update mocap position and compute its error
             site_xpos = self.data.site_xpos.take(self._siteid, axis=0)
-            self.data.mocap_pos[self._mocapid] += ts_action[:, 0]
-            pos_err[:] = self.data.mocap_pos[self._mocapid] - site_xpos
+            self.data.mocap_pos[self._mocapid] = site_xpos + ts_action[:, 0]
             # Update mocap orientation and compute its error
-            xmat, quat = self.data.site_xmat, self.data.mocap_quat
-            for i, (sid, mid) in enumerate(zip(self._siteid, self._mocapid)):
+            quat, xmat = self.data.mocap_quat, self.data.site_xmat
+            for i, (mid, sid) in enumerate(zip(self._mocapid, self._siteid)):
+                mujoco.mju_mat2Quat(quat[mid], xmat[sid])
                 mujoco.mju_quatIntegrate(quat[mid], ts_action[i, 1], 1.0)
-                mujoco.mju_mat2Quat(site_quat, xmat[sid])
-                mujoco.mju_subQuat(ori_err[i], quat[mid], site_quat)
-            return np.concatenate([pos_err, ori_err], axis=-1)
+            return ts_action.reshape(nrobot, 6)
 
         return get_pose_error
 

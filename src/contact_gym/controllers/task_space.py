@@ -125,10 +125,10 @@ class TaskSpaceControllerAction(ABC, gym.ActionWrapper):
     """Base task-space action wrapper for MuJoCo manipulation environments.
 
     Each action specifies, per robot, a **delta pose** relative to the end-effector
-    site's current target pose:
+    site's current pose:
     - A delta position offset, expressed in the world frame
     - A delta rotation, expressed as a rotation vector in the tangent space of the
-        target's current orientation.
+        site's current orientation.
 
     Allows for **configurable compensation** of robot inertia, bias
     (Coriolis + centrifugal + gravity), gravity only, viscous damping, or dry friction.
