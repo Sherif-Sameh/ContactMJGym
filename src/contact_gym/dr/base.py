@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Callable, Protocol, TypeAlias
 
-from ..utils.mj_utils import MJTJOINT_TO_DOF_DIM, MJTJOINT_TO_QPOS_DIM
+from ..utils.mj_utils import mjtjoint_to_dof_dim, mjtjoint_to_qpos_dim
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -174,19 +174,19 @@ def jnt_sel_to_qpos_sel(model: mujoco.MjModel, jnt_sel: SelectorType) -> Selecto
     """Map instance/entry selector from model joints to qpos."""
     if isinstance(jnt_sel, int):
         qpos_adr = model.jnt_qposadr[jnt_sel]
-        qpos_dim = MJTJOINT_TO_QPOS_DIM[model.jnt_type[jnt_sel]]
+        qpos_dim = mjtjoint_to_qpos_dim(model.jnt_type[jnt_sel])
         return qpos_adr if qpos_dim == 1 else slice(qpos_adr, qpos_adr + qpos_dim)
     if isinstance(jnt_sel, slice) and jnt_sel.step in [None, 1]:
         jnt_types = model.jnt_type[jnt_sel]
         qpos_adr = (
             model.jnt_qposadr[0] if jnt_sel.start is None else model.jnt_qposadr[jnt_sel.start]
         )
-        qpos_dim = sum(MJTJOINT_TO_QPOS_DIM[jnt_type] for jnt_type in jnt_types)
+        qpos_dim = sum(mjtjoint_to_qpos_dim(jnt_type) for jnt_type in jnt_types)
         return slice(qpos_adr, qpos_adr + qpos_dim)
     # Non-contiguous slice, sequence, or array of joints -> sequence of qpos
     jnt_types = model.jnt_type[jnt_sel]
     qpos_adrs = model.jnt_qposadr[jnt_sel]
-    qpos_dims = [MJTJOINT_TO_QPOS_DIM[jnt_type] for jnt_type in jnt_types]
+    qpos_dims = [mjtjoint_to_qpos_dim(jnt_type) for jnt_type in jnt_types]
     return sum(
         [
             tuple(range(qpos_adr, qpos_adr + qpos_dim))
@@ -200,17 +200,17 @@ def jnt_sel_to_dof_sel(model: mujoco.MjModel, jnt_sel: SelectorType) -> Selector
     """Map instance/entry selector from model joints to dofs."""
     if isinstance(jnt_sel, int):
         dof_adr = model.jnt_dofadr[jnt_sel]
-        dof_dim = MJTJOINT_TO_DOF_DIM[model.jnt_type[jnt_sel]]
+        dof_dim = mjtjoint_to_dof_dim(model.jnt_type[jnt_sel])
         return dof_adr if dof_dim == 1 else slice(dof_adr, dof_adr + dof_dim)
     if isinstance(jnt_sel, slice) and jnt_sel.step in [None, 1]:  # contiguous block
         jnt_types = model.jnt_type[jnt_sel]
         dof_adr = model.jnt_dofadr[0] if jnt_sel.start is None else model.jnt_dofadr[jnt_sel.start]
-        dof_dim = sum(MJTJOINT_TO_DOF_DIM[jnt_type] for jnt_type in jnt_types)
+        dof_dim = sum(mjtjoint_to_dof_dim(jnt_type) for jnt_type in jnt_types)
         return slice(dof_adr, dof_adr + dof_dim)
     # Non-contiguous slice, sequence, or array of joints -> sequence of dofs
     jnt_types = model.jnt_type[jnt_sel]
     dof_adrs = model.jnt_dofadr[jnt_sel]
-    dof_dims = [MJTJOINT_TO_DOF_DIM[jnt_type] for jnt_type in jnt_types]
+    dof_dims = [mjtjoint_to_dof_dim(jnt_type) for jnt_type in jnt_types]
     return sum(
         [tuple(range(dof_adr, dof_adr + dof_dim)) for dof_adr, dof_dim in zip(dof_adrs, dof_dims)],
         start=(),
