@@ -126,12 +126,19 @@ class MinkControllerAction(TaskSpaceControllerAction):
             parameters and `mink`. See :class:`MinkControllerCfg`.
     """
 
+    @dataclass(slots=True)
+    class MjcbControlData(TaskSpaceControllerAction.MjcbControlData):
+        """Stores pre-computed data required for `mjcb_control` callback."""
+
+        qpos_target: FloatArray | None = None
+
     def __init__(self, env: MujocoBaseEnv, cfg: MinkControllerCfg = MinkControllerCfg()) -> None:
         import mink  # ensure mink is installed
 
         super().__init__(env, cfg=cfg)
         self._check_cfg(self.model, cfg)
         self.cfg = cfg  # for type-hints
+        self._mjcb_data = self.MjcbControlData()
         # Store target site and visualization mocap ids
         self._siteid = [self.model.site(site).id for site in cfg.mink_cfg.sites]
         self._mocapid = [
@@ -168,7 +175,7 @@ class MinkControllerAction(TaskSpaceControllerAction):
         """
         obs, info = self.env.reset(seed=seed, options=options)
         # Reset frame tasks and mocap
-        for task, sid, mid in zip(self._frame_tasks, self._mocapid, self._siteid):
+        for task, mid, sid in zip(self._frame_tasks, self._mocapid, self._siteid):
             site_xpos, site_xmat = self.data.site_xpos[sid], self.data.site_xmat[sid]
             mocap_pos, mocap_quat = self.data.mocap_pos[mid], self.data.mocap_quat[mid]
             mocap_pos[:] = site_xpos
@@ -176,24 +183,23 @@ class MinkControllerAction(TaskSpaceControllerAction):
             task.set_target(mink.SE3(wxyz_xyz=np.concatenate([mocap_quat, mocap_pos])))
         return obs, info
 
-    def get_robot_ctrl(self, ts_action: FloatArray, kp: FloatArray, kv: FloatArray) -> FloatArray:
-        """Compute the latest robot actuator ctrl signal.
+    def precompute_data(self, ts_action: FloatArray) -> None:
+        """Pre-compute data needed for ctrl computation during mjcb_control callback.
+
+        Called at the same rate as the environment stepping rate (sim_freq // frame_skip).
 
         Args:
             ts_action: Task-space control action for position and orientation.
                 Shape is (6 * `nrobot`).
-            kp: Positional gain (stiffness) for motion control. Shape is (`ncontrol`,).
-            kv: Velocity gain (computed from `kp` and damping ratio) for motion control.
-                Shape is (`ncontrol`,).
-
-        Returns:
-            Robot control signal computed from task-space action and motion control gains.
         """
-        qpos_target = self.mink_action(ts_action)
-        ctrl = (
-            kp * (qpos_target - self.data.qpos[self._rbt_qpos_range])
-            - kv * self.data.qvel[self._rbt_dof_range]
-        )
+        # Update target qpos via mink
+        self._mjcb_data.qpos_target = self.mink_action(ts_action)
+
+    def get_robot_ctrl(self, model: mujoco.MjModel, data: mujoco.MjData) -> FloatArray:
+        """Compute the latest robot actuator ctrl signal."""
+        qpos = data.qpos[self._rbt_qpos_range]
+        qvel = data.qvel[self._rbt_dof_range]
+        ctrl = self._mjcb_data.kp * (self._mjcb_data.qpos_target - qpos) - self._mjcb_data.kv * qvel
         return ctrl
 
     # region Helpers
@@ -257,7 +263,7 @@ class MinkControllerAction(TaskSpaceControllerAction):
         step = np.sqrt(np.sum(ts_action * ts_action, axis=2)) + 1e-12
         ts_action *= np.minimum(1.0, limits / step)[:, :, None]
         # Add pose offsets to site poses in place and update mocaps and targets
-        for i, (task, sid, mid) in enumerate(zip(self._frame_tasks, self._mocapid, self._siteid)):
+        for i, (task, mid, sid) in enumerate(zip(self._frame_tasks, self._mocapid, self._siteid)):
             site_xpos, site_xmat = self.data.site_xpos[sid], self.data.site_xmat[sid]
             mocap_pos, mocap_quat = self.data.mocap_pos[mid], self.data.mocap_quat[mid]
             mocap_pos[:] = site_xpos + ts_action[i, 0]
