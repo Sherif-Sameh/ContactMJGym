@@ -1,6 +1,6 @@
 import mujoco
 
-MJTJOINT_TO_QPOS_NUM = {
+MJTJOINT_TO_QPOS_DIM = {
     mujoco.mjtJoint.mjJNT_FREE: 7,
     mujoco.mjtJoint.mjJNT_BALL: 4,
     mujoco.mjtJoint.mjJNT_SLIDE: 1,
