@@ -5,12 +5,17 @@ from typing import TYPE_CHECKING, Any, Callable
 import mujoco
 import numpy as np
 
-from ..utils.mj_utils import disable_actuators
-from .task_space import TaskSpaceControllerAction
+from ..utils.mj_utils import MJTJOINT_TO_QPOS_DIM
+from .task_space import TaskSpaceControllerAction, TaskSpaceControllerCfg
 
 if TYPE_CHECKING:
-    from ..envs.mujoco_base import ActType, InfoType, MujocoBaseEnv, ObsType
-    from .task_space import WrapperActType
+    from collections.abc import Sequence
+
+    from ..envs.mujoco_base import InfoType, MujocoBaseEnv, ObsType
+    from .task_space import FloatArray
+
+
+# region Controller
 
 
 class MocapControllerAction(TaskSpaceControllerAction):
@@ -19,56 +24,79 @@ class MocapControllerAction(TaskSpaceControllerAction):
     Exposes end-effector control through mocap bodies welded to end-effector sites, following
     the approach used by Gymnasium-Robotics' Fetch environments. At initialization, this
     wrapper enables the weld equality constraints between each mocap body's site and its
-    corresponding end-effector site. Optionally, the robot(s)' joint controllers can be
-    retained to regulate it towards its initial configuration, which is updated at every
-    environment reset. Otherwise, the robot(s)' actuators are disabled, relying only on
-    equality constraints for control. The wrapper supports any number of robots/grippers
-    present in the model, each controlled through its own mocap-weld pair.
+    corresponding end-effector site, optionally overriding its default solver parameters.
 
-    For action convention, see :class:`TaskSpaceControllerAction`.
+    Supports applying a null-space projection to the computed joint accelerations towards
+    a home configuration for regularization without affecting the main task-space
+    tracking task. Otherwise, the same regularization will be applied, using the
+    configured or input (if variable) motion control parameters without the null-space
+    projection.
 
-    **Note**: this wrapper assumes weld equality constraints are defined between
-    *sites* (mocap site <-> gripper site), not bodies, and that *no other* action wrappers
-    have been already applied to the environment.
+    For a detailed configuration description and action convention, see
+    :class:`TaskSpaceControllerAction`.
+
+    **Notes**:
+    - See the common task-space notes defined in :class:`TaskSpaceControllerAction`.
+    - Wrapper assumes weld equality constraints are defined between *sites*
+        (mocap site <-> gripper site), not bodies.
+    - Since the main end-effector driving force comes from the weld equality constraint,
+        which is not available when computing controls, a large fraction of the
+        motion-inducing force is not multiplied by the generalized mass matrix or exposed
+        to the controller. Hence, `mass_mult` will not be physically very accurate and
+        friction over-compensation due to `fric_mult` is > 1 will also not be accurate.
 
     Args:
         env: The MuJoCo-based manipulation environment to wrap. Must define mocap bodies
             welded to sites via site-to-site equality constraints.
-        max_tstep: Maximum translation step size (Euclidean norm, in meters)
-            applied per action. Default value is 0.02.
-        max_rstep: Maximum rotation step size (norm of the rotation vector,
-            in radians) applied per action. Defaults value is 0.04 * pi.
-        fltr_acts_kwargs: Kwargs for filtering for gripper actuators. For details, see
-            :func:`~..utils.mj_utils.filter_actuators`. If empty, we rely on a simple
-            heuristic by filtering for actuators whose `trntype` is
-            `mujoco.mjtTrn.mjTRN_TENDON`. Default value is an empty dict.
-        disable_acts: If True, the robot(s)' actuators are disabled (gripper actuators are
-            unaffected). Default value is False.
+        cfg: Configuration for task-space actions, compensation terms and motion control
+            parameters. See :class:`TaskSpaceControllerCfg`.
+        solimp: Optional solver impedence parameters for overriding weld equality
+            constraint parameters. Default value is None.
+        solref: Optional solver reference parameters for overriding weld equality
+            constraint parameters. Default value is None.
+        null_project: If True, apply null-space projection to regularization joint
+            accelerations. Default value is False.
+        sigma_damp: Damping factor for singular values when computing Moore-Penrose
+            pseudoinverse of the Jacobian via the SVD. Default value is 1e-3.
+        sigma_thr: Singular value threshold for applying damping when computing
+            Moore-Penrose pseudoinverse of the Jacobian via the SVD. Default value is 1e-5.
     """
 
     def __init__(
         self,
         env: MujocoBaseEnv,
-        max_tstep: float = 0.02,
-        max_rstep: float = 0.04 * np.pi,
-        fltr_acts_kwargs: dict[str, Any] = {},
-        disable_acts: bool = False,
+        cfg: TaskSpaceControllerCfg = TaskSpaceControllerCfg(),
+        solimp: Sequence[float] | None = None,
+        solref: Sequence[float] | None = None,
+        null_project: bool = False,
+        sigma_damp: float = 1e-3,
+        sigma_thr: float = 1e-5,
     ):
-        assert env.unwrapped.model.nmocap > 0
+        super().__init__(env, cfg=cfg)
+        assert cfg.param_cfg.param_space == "joint", (
+            "Mocap controller only supports joint-space parameters."
+        )
+        assert env.unwrapped.model.nmocap >= cfg.nrobot
+        self.null_project = null_project
+        self.sigma_damp = sigma_damp
+        self.sigma_thr = sigma_thr
+        # Store robot qpos range
+        rbt_acts, _ = self._split_model_actuators(self.model, cfg.fltr_acts_kwargs)
+        self._rbt_qpos_range, rbt_qpos_len = self._get_actuator_qpos_range(self.model, rbt_acts)
+        # Store home configuration for regularization
+        if (homekey := mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_KEY, "home")) >= 0:
+            self._qpos_home = self.model.key_qpos[homekey, self._rbt_qpos_range].copy()
+        else:
+            self._qpos_home = np.zeros(rbt_qpos_len, dtype=np.float64)
+        # Allocate buffers for Jacobian
+        self._jac = np.zeros((6, self.model.nv), dtype=np.float64)
+        self._jac_robot = np.zeros_like(self._jac)
         # Enable mocap weld constraints and get mocap -> site id mapping
         self._mocapid, self._mocap_siteid = self._setup_mocap_bodies(
-            env.unwrapped.model, env.unwrapped.data
+            self.model, self.data, cfg.nrobot, solimp, solref
         )
-        nrobot = len(self._mocapid)
-        super().__init__(env, nrobot, max_tstep, max_rstep, fltr_acts_kwargs)
-        # Disable actuators if requested
-        if disable_acts:
-            nactuator = env.unwrapped.model.nactuator
-            gri_acts = self._get_gripper_actuators(env.unwrapped.model, fltr_acts_kwargs)
-            rbt_acts = [i for i in range(nactuator) if i not in gri_acts]
-            disable_actuators(env.unwrapped.model, rbt_acts)
         # Build action function for mocap bodies
-        self.mocap_action = self._build_mocap_action(max_tstep, max_rstep)
+        self.mocap_action = self._build_mocap_action()
 
     def reset(
         self, *, seed: int | None = None, options: dict[str, Any] | None = None
@@ -82,30 +110,66 @@ class MocapControllerAction(TaskSpaceControllerAction):
         self.data.mocap_pos[self._mocapid] = site_xpos
         for mid, sid in zip(self._mocapid, self._mocap_siteid):
             mujoco.mju_mat2Quat(self.data.mocap_quat[mid], self.data.site_xmat[sid])
-        # Reset action buffer
-        self.action_buffer[:] = self.data.ctrl
         return obs, info
 
-    def action(self, action: WrapperActType) -> ActType:
-        """Returns a modified action before :meth:`step` is called.
+    def get_robot_ctrl(self, ts_action: FloatArray, kp: FloatArray, kv: FloatArray) -> FloatArray:
+        """Compute the latest robot actuator ctrl signal.
 
         Args:
-            action: The original :meth:`step` actions
+            ts_action: Task-space control action for position and orientation.
+                Shape is (6 * `nrobot`).
+            kp: Positional gain (stiffness) for motion control. Shape is (`ncontrol`,).
+            kv: Velocity gain (computed from `kp` and damping ratio) for motion control.
+                Shape is (`ncontrol`,).
 
         Returns:
-            The modified actions
+            Robot control signal computed from task-space action and motion control gains.
         """
-        action = self.unscale_action(action)
-        self.mocap_action(action)
-        self.gripper_action(action)
-        return self.action_buffer
+        self.mocap_action(ts_action)
+        ctrl_reg = (
+            kp * (self._qpos_home - self.data.qpos[self._rbt_qpos_range])
+            - kv * self.data.qvel[self._rbt_dof_range]
+        )
+        if self.null_project:
+            # Compute full Jacobian matrix
+            mujoco.mj_jacSite(
+                self.model, self.data, self._jac[:3], self._jac[3:], self._mocap_siteid[0]
+            )
+            for siteid in self._mocap_siteid[1:]:  # robots assumed independent
+                mujoco.mj_jacSite(
+                    self.model, self.data, self._jac_robot[:3], self._jac_robot[3:], siteid
+                )
+                self._jac += self._jac_robot
+            # Apply null-space projection
+            null_projector = self._get_nullspace_projector(
+                self._jac[self._rbt_dof_range, self._rbt_dof_range]
+            )
+            ctrl_reg = null_projector @ ctrl_reg
+        return ctrl_reg
 
     # region Helpers
 
     @staticmethod
+    def _get_actuator_qpos_range(
+        model: mujoco.MjModel, actuators: list[int]
+    ) -> tuple[slice | tuple[int, ...], int]:
+        """Get the range (slice or indices) that correspond to the given actuators in qpos."""
+        qpos_indices = []
+        for act in actuators:
+            jnt_id = model.actuator_trnid[act, 0]
+            qposadr = model.jnt_qposadr[jnt_id]
+            qposdim = MJTJOINT_TO_QPOS_DIM[model.jnt_type[jnt_id]]
+            qpos_indices.extend(list(range(qposadr, qposadr + qposdim)))
+        return MocapControllerAction._indices_to_slice(qpos_indices), len(qpos_indices)
+
+    @staticmethod
     def _setup_mocap_bodies(
-        model: mujoco.MjModel, data: mujoco.MjData
-    ) -> tuple[list[int], list[int]]:
+        model: mujoco.MjModel,
+        data: mujoco.MjData,
+        nrobot: int,
+        solimp: Sequence[float] | None,
+        solref: Sequence[float] | None,
+    ) -> tuple[slice | tuple[int, ...], slice | tuple[int, ...]]:
         """Enable weld constraints involving mocap bodies and return mocap -> site id map."""
         # Enable weld constraints and establish mocap -> site id map
         body_mocapid, mocap_siteid = [], []
@@ -120,6 +184,10 @@ class MocapControllerAction(TaskSpaceControllerAction):
             if mocap1id >= 0 or mocap2id >= 0:
                 model.eq_active0[i] = 1
                 data.eq_active[i] = 1
+                if solimp is not None:
+                    model.eq_solimp[i] = solimp
+                if solref is not None:
+                    model.eq_solref[i] = solref
                 if mocap1id >= 0:  # obj1 is the mocap site
                     mocapid = mocap1id
                     siteid = model.eq_obj2id[i]
@@ -128,25 +196,42 @@ class MocapControllerAction(TaskSpaceControllerAction):
                     siteid = model.eq_obj1id[i]
                 body_mocapid.append(mocapid)
                 mocap_siteid.append(siteid)
-        assert len(mocap_siteid) > 0, "Expected at last a single mocap weld constraint. Found None."
+        assert len(mocap_siteid) == nrobot, (
+            f"Found only {len(mocap_siteid)}/{nrobot} mocap weld constraint."
+        )
+        body_mocapid = MocapControllerAction._indices_to_slice(body_mocapid)
+        mocap_siteid = MocapControllerAction._indices_to_slice(mocap_siteid)
         return body_mocapid, mocap_siteid
 
-    def _build_mocap_action(
-        self, max_tstep: float, max_rstep: float
-    ) -> Callable[[WrapperActType], None]:
-        """Build the mocap action function to update mocap poses given the current action."""
-        nmocap = len(self._mocap_siteid)
-        limits = np.array([max_tstep, max_rstep]).reshape(1, 2)
+    # region Action Helpers
 
-        def mocap_action(action: WrapperActType) -> None:
-            action = action[: 6 * nmocap].reshape(nmocap, 2, 3)
+    def _build_mocap_action(self) -> Callable[[FloatArray], None]:
+        """Build the mocap action function to update mocap poses given the current
+        task-space action."""
+        nmocap = len(self._mocap_siteid)
+        limits = np.array([self.cfg.max_tstep, self.cfg.max_rstep]).reshape(1, 2)
+
+        def mocap_action(ts_action: FloatArray) -> None:
+            ts_action = ts_action.reshape(nmocap, 2, 3)
             # Limit the action norms
-            step = np.sqrt(np.sum(action * action, axis=2)) + 1e-12
-            action *= np.minimum(1.0, limits / step)[:, :, None]
+            step = np.sqrt(np.sum(ts_action * ts_action, axis=2)) + 1e-12
+            ts_action *= np.minimum(1.0, limits / step)[:, :, None]
             # Add pose offsets to mocap poses in place
-            self.data.mocap_pos[self._mocapid] += action[:, 0]
+            self.data.mocap_pos[self._mocapid] += ts_action[:, 0]
             quat = self.data.mocap_quat
             for i, mid in enumerate(self._mocapid):
-                mujoco.mju_quatIntegrate(quat[mid], action[i, 1], 1.0)
+                mujoco.mju_quatIntegrate(quat[mid], ts_action[i, 1], 1.0)
 
         return mocap_action
+
+    def _get_nullspace_projector(self, jac: FloatArray) -> FloatArray:
+        """Compute the damped Moore-Penrose pseudoinverse of the Jacobian using its SVD."""
+        U, S, Vt = np.linalg.svd(jac, full_matrices=False)
+        # Apply variable damping to small singular values
+        lambda_sqr = np.where(
+            S < self.sigma_thr, self.sigma_damp**2 * (1.0 - (S / self.sigma_thr) ** 2), 0.0
+        )
+        S_damped = S / (S**2 + lambda_sqr)
+        jac_pinv = (Vt.T * S_damped) @ U.T
+        null_projector = np.eye(jac_pinv.shape[1]) - jac_pinv @ jac
+        return null_projector
