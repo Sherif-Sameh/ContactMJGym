@@ -7,8 +7,7 @@ import mujoco
 from numpy.typing import NDArray
 
 import contact_gym  # noqa: F401
-import contact_gym.controllers
-from contact_gym.controllers import ALL_CONTROLLERS
+from contact_gym.controllers import ALL_CONTROLLERS, CONTROLLER_TO_CLS
 from contact_gym.envs import EdgeGraspEnvCfg
 
 SceneCfg = EdgeGraspEnvCfg.SceneCfg
@@ -18,9 +17,6 @@ INTERNAL_ENV_IDS = [
     for env_id, spec in gym.registry.items()
     if isinstance(spec.entry_point, str) and spec.entry_point.startswith("contact_gym.")
 ]
-CONTROLLER_REGISTRY = {
-    k: getattr(contact_gym.controllers, f"{k.title()}ControllerAction") for k in ALL_CONTROLLERS
-}
 
 
 def _build_action_fn(
@@ -34,6 +30,7 @@ def _build_action_fn(
 def main(
     env_name: str,
     act_scale: float = 3e-4,
+    act_repeat: int = 20,
     seed: int | None = None,
     controller: str | None = None,
     kwargs: dict | None = None,
@@ -41,16 +38,17 @@ def main(
 ):
     """Launch a live MuJoCo viewer window for a registered gymnasium env.
 
-    Actions are sampled randomly at each step from the action space, with the magnitude
-    of the random actions being determined the `act_scale` parameter.
+    Actions are sampled randomly from the action space, with the magnitude of the
+    random actions being determined the `act_scale` parameter.
 
     Args:
         env_name: Registered gymnasium environment ID (e.g., "EdgeGrasp-v0").
-        act_scale: Scale factor for random actions. Default value is 3e-4.  
+        act_scale: Scale factor for random actions. Default value is 3e-4.
+        act_repeat: Number of steps to repeat sampled action for. Default value is 20.  
         seed: Optional seed for the environment. Default value is None.
         controller: Optional controller to wrap environment with. Default value is None.
         kwargs: Optional extra kwargs forwarded to gym.make (e.g., '{"frame_skip": 20}').
-        scene_kwargs: Optional kwargs for scene configuration (e.g.,'{"robot": "fr3"}' ). 
+        scene_kwargs: Optional kwargs for scene configuration (e.g.,'{"robot": "fr3"}'). 
 
     Usage:
         python simple_agent.py --env_name "EdgeGrasp-v0"
@@ -58,7 +56,8 @@ def main(
         python simple_agent.py \
             --env_name "EdgeGrasp-v0" \
             --act_scale 0.05 \
-            --seed 0 \
+            --act_repeat 10 \
+            --seed 10 \
             --controller mocap \
             --kwargs '{"frame_skip": 20}' \
             --scene_kwargs '{"robot": "fr3"}'
@@ -69,8 +68,8 @@ def main(
     cfg = EdgeGraspEnvCfg(scene_cfg=SceneCfg(**scene_kwargs))
     env = gym.make(env_name, cfg=cfg, render_mode="human", **kwargs)
     if controller is not None:
-        assert controller in CONTROLLER_REGISTRY
-        env = CONTROLLER_REGISTRY[controller](env)
+        assert controller in ALL_CONTROLLERS
+        env = CONTROLLER_TO_CLS[controller](env)
     unwrapped = env.unwrapped
     assert hasattr(unwrapped, "viewer_is_running"), (
         "Environment does not have a viewer_is_running property."
@@ -82,7 +81,8 @@ def main(
     next_frame = time.perf_counter()
     while unwrapped.viewer_is_running:
         # Sample and apply action
-        action = action_fn(env, unwrapped.data)
+        if unwrapped.step_count % act_repeat == 0:
+            action = action_fn(env, unwrapped.data)
         _, _, terminated, truncated, _ = env.step(action)
         if terminated or truncated:
             env.reset()

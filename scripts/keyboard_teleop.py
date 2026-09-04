@@ -4,21 +4,19 @@ import fire
 import gymnasium as gym
 
 import contact_gym  # noqa: F401
-import contact_gym.controllers
-from contact_gym.controllers import ALL_CONTROLLERS
+from contact_gym.controllers import ALL_CONTROLLERS, CONTROLLER_TO_CFG_CLS, CONTROLLER_TO_CLS
+from contact_gym.controllers.task_space import TaskSpaceControllerCfg
 from contact_gym.envs import EdgeGraspEnvCfg
 from contact_gym.teleop import Keyboard
 
 SceneCfg = EdgeGraspEnvCfg.SceneCfg
+CompensationCfg = TaskSpaceControllerCfg.CompensationCfg
 
 INTERNAL_ENV_IDS = [
     env_id.split("/")[-1]
     for env_id, spec in gym.registry.items()
     if isinstance(spec.entry_point, str) and spec.entry_point.startswith("contact_gym.")
 ]
-CONTROLLER_REGISTRY = {
-    k: getattr(contact_gym.controllers, f"{k.title()}ControllerAction") for k in ALL_CONTROLLERS
-}
 
 
 def main(
@@ -61,8 +59,9 @@ def main(
     scene_kwargs = scene_kwargs if scene_kwargs else {}
     cfg = EdgeGraspEnvCfg(scene_cfg=SceneCfg(**scene_kwargs))
     env = gym.make(env_name, cfg=cfg, render_mode="human", **kwargs)
-    assert controller in CONTROLLER_REGISTRY
-    env: gym.Env = CONTROLLER_REGISTRY[controller](env)
+    assert controller in ALL_CONTROLLERS
+    controller_cfg = CONTROLLER_TO_CFG_CLS[controller](comp_cfg=CompensationCfg(bias_mult=1))
+    env: gym.Env = CONTROLLER_TO_CLS[controller](env, controller_cfg)
     unwrapped = env.unwrapped
     assert hasattr(unwrapped, "viewer_is_running"), (
         "Environment does not have a viewer_is_running property."

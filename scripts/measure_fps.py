@@ -8,8 +8,7 @@ import numpy as np
 from numpy.typing import NDArray
 
 import contact_gym  # noqa: F401
-import contact_gym.controllers
-from contact_gym.controllers import ALL_CONTROLLERS
+from contact_gym.controllers import ALL_CONTROLLERS, CONTROLLER_TO_CLS
 from contact_gym.envs import EdgeGraspEnvCfg
 
 SceneCfg = EdgeGraspEnvCfg.SceneCfg
@@ -19,9 +18,6 @@ INTERNAL_ENV_IDS = [
     for env_id, spec in gym.registry.items()
     if isinstance(spec.entry_point, str) and spec.entry_point.startswith("contact_gym.")
 ]
-CONTROLLER_REGISTRY = {
-    k: getattr(contact_gym.controllers, f"{k.title()}ControllerAction") for k in ALL_CONTROLLERS
-}
 
 
 def _build_action_fn(
@@ -73,8 +69,8 @@ def main(
     cfg = EdgeGraspEnvCfg(scene_cfg=SceneCfg(**scene_kwargs))
     env = gym.make(env_name, cfg=cfg, **kwargs)
     if controller is not None:
-        assert controller in CONTROLLER_REGISTRY
-        env = CONTROLLER_REGISTRY[controller](env)
+        assert controller in ALL_CONTROLLERS
+        env = CONTROLLER_TO_CLS[controller](env)
     unwrapped = env.unwrapped
     assert hasattr(unwrapped, "model") and hasattr(unwrapped, "data"), (
         "Environment does not expose MuJoCo model and data structs."
