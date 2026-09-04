@@ -129,7 +129,7 @@ class MinkControllerAction(TaskSpaceControllerAction):
         env: The MuJoCo-based manipulation environment to wrap. Must define matching
             mocap bodies for every end-effector site.
         cfg: Configuration for task-space actions, compensation terms, motion control
-            parameters and `mink`. See :class:`MinkControllerCfg`.
+            parameters and `mink`. See :class:`MinkControllerCfg`. Default value is None.
     """
 
     @dataclass(slots=True)
@@ -138,9 +138,10 @@ class MinkControllerAction(TaskSpaceControllerAction):
 
         qpos_target: FloatArray | None = None
 
-    def __init__(self, env: MujocoBaseEnv, cfg: MinkControllerCfg = MinkControllerCfg()) -> None:
+    def __init__(self, env: MujocoBaseEnv, cfg: MinkControllerCfg | None = None) -> None:
         import mink  # ensure mink is installed
 
+        cfg = MinkControllerCfg() if cfg is None else cfg
         super().__init__(env, cfg=cfg)
         self._check_cfg(self.model, cfg)
         self.cfg = cfg  # for type-hints

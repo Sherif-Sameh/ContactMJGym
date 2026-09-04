@@ -98,6 +98,7 @@ class OscControllerAction(TaskSpaceControllerAction):
             welded to sites via site-to-site equality constraints.
         cfg: Configuration for task-space actions, compensation terms, motion control
             parameters and operational space parameters. See :class:`OscControllerCfg`.
+            Default value is None.
     """
 
     @dataclass(slots=True)
@@ -109,7 +110,8 @@ class OscControllerAction(TaskSpaceControllerAction):
         ctrl_projector: FloatArray | None = None
         null_projector: FloatArray | None = None
 
-    def __init__(self, env: MujocoBaseEnv, cfg: OscControllerCfg = OscControllerCfg()):
+    def __init__(self, env: MujocoBaseEnv, cfg: OscControllerCfg | None = None):
+        cfg = OscControllerCfg() if cfg is None else cfg
         super().__init__(env, cfg=cfg)
         self._check_cfg(self.model, cfg)
         self.cfg = cfg  # for type-hints

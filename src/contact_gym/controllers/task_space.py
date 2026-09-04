@@ -164,7 +164,7 @@ class TaskSpaceControllerAction(ABC, gym.ActionWrapper):
     Args:
         env: The MuJoCo-based manipulation environment to wrap.
         cfg: Configuration for task-space actions, compensation terms and motion control
-            parameters. See :class:`TaskSpaceControllerCfg`.
+            parameters. See :class:`TaskSpaceControllerCfg`. Default value is None.
     """
 
     @dataclass(slots=True)
@@ -175,14 +175,14 @@ class TaskSpaceControllerAction(ABC, gym.ActionWrapper):
         kv: FloatArray | None = None
         mass_matrix: FloatArray | None = None
 
-    def __init__(self, env: MujocoBaseEnv, cfg: TaskSpaceControllerCfg = TaskSpaceControllerCfg()):
+    def __init__(self, env: MujocoBaseEnv, cfg: TaskSpaceControllerCfg | None = None):
         super().__init__(env)
         assert isinstance(env.unwrapped, MujocoBaseEnv), (
             f"Unsupported env type {env.unwrapped.__class__.__name__}. "
             f"Must be a subclass of {MujocoBaseEnv.__name__}."
         )
         assert env.unwrapped.model.nu == env.action_space.shape[0]
-        self.cfg = cfg
+        self.cfg = TaskSpaceControllerCfg() if cfg is None else cfg
         self.model = env.unwrapped.model
         self.data = env.unwrapped.data
         self.frame_skip = env.unwrapped.frame_skip

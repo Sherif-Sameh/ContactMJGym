@@ -80,6 +80,7 @@ class MocapControllerAction(TaskSpaceControllerAction):
             welded to sites via site-to-site equality constraints.
         cfg: Configuration for task-space actions, compensation terms, motion control
             parameters and null-space projection. See :class:`MocapControllerCfg`.
+            Default value is None.
     """
 
     @dataclass(slots=True)
@@ -88,7 +89,8 @@ class MocapControllerAction(TaskSpaceControllerAction):
 
         null_projector: FloatArray | None = None
 
-    def __init__(self, env: MujocoBaseEnv, cfg: MocapControllerCfg = MocapControllerCfg()):
+    def __init__(self, env: MujocoBaseEnv, cfg: MocapControllerCfg | None = None):
+        cfg = MocapControllerCfg() if cfg is None else cfg
         super().__init__(env, cfg=cfg)
         self._check_cfg(self.model, cfg)
         self.cfg = cfg  # for type-hints
