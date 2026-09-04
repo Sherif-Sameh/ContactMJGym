@@ -118,7 +118,7 @@ class MocapControllerAction(TaskSpaceControllerAction):
         """Resets the environment to an initial internal state, returning an initial
         observation and info.
         """
-        obs, info = self.env.reset(seed=seed, options=options)
+        obs, info = super().reset(seed=seed, options=options)
         # Reset mocap bodies to corresponding sites
         site_xpos = self.data.site_xpos.take(self._siteid, axis=0)
         self.data.mocap_pos[self._mocapid] = site_xpos

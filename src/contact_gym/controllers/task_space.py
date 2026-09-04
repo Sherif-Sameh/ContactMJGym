@@ -4,7 +4,7 @@ import warnings
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field, fields
 from enum import StrEnum
-from typing import TYPE_CHECKING, Any, Callable, TypeAlias
+from typing import TYPE_CHECKING, Any, Callable, ClassVar, TypeAlias
 
 import gymnasium as gym
 import mujoco
@@ -18,7 +18,7 @@ from ..utils.mj_utils import filter_actuators, mjtjoint_to_dof_dim, mjtjoint_to_
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
-    from ..envs.mujoco_base import ActType, FloatArray
+    from ..envs.mujoco_base import ActType, FloatArray, InfoType, ObsType
 
     WrapperActType: TypeAlias = ActType
 
@@ -147,7 +147,7 @@ class TaskSpaceControllerAction(ABC, gym.ActionWrapper):
     - Wrapper uses a split high-low frequency setup for smooth force control. At the
         environment stepping rate, only expensive/fixed data needed for control is
         pre-computed. Then, at the sim stepping rate, joint force commands are computed
-        and written into data.ctrl via `mjcb_control`.
+        and written into data.ctrl via the `mjcb_control` global callback.
     - To allow force control, wrapper converts all non-user-defined actuators into motor
         actuators with a unit gain. Force ranges are used to update ctrl ranges.
     - By default, no compensation takes place and motion control parameters are fixed.
@@ -166,6 +166,9 @@ class TaskSpaceControllerAction(ABC, gym.ActionWrapper):
         cfg: Configuration for task-space actions, compensation terms and motion control
             parameters. See :class:`TaskSpaceControllerCfg`. Default value is None.
     """
+
+    _registered_mjcb_control: ClassVar[bool] = False
+    _mjcb_control_registry: ClassVar[dict[int, "TaskSpaceControllerAction"]] = {}
 
     @dataclass(slots=True)
     class MjcbControlData:
@@ -220,10 +223,31 @@ class TaskSpaceControllerAction(ABC, gym.ActionWrapper):
         self.action_space, _, self.unscale_action = rescale_box(
             action_space_unscaled, new_min=-1, new_max=1
         )
-        # Build functions and register mjcb_control callback
+        # Build functions and register self into mjcb_control registry
         self.split_action = self._build_split_action(kp, damping)
         self.mjcb_control = self._build_mjcb_control()
-        mujoco.set_mjcb_control(self.mjcb_control)
+        TaskSpaceControllerAction._mjcb_control_registry[id(self.data)] = self
+
+    @staticmethod
+    def mjcb_control_router(model: mujoco.MjModel, data: mujoco.MjData) -> None:
+        instance = TaskSpaceControllerAction._mjcb_control_registry[id(data)]
+        instance.mjcb_control(model, data)
+
+    def reset(
+        self, *, seed: int | None = None, options: dict[str, Any] | None = None
+    ) -> tuple[ObsType, InfoType]:
+        """Resets the environment to an initial internal state, returning an initial
+        observation and info.
+        """
+        # Must lazy-register mjcb_control because registering callbacks causes spec.compile()
+        # to raise an error; see https://github.com/google-deepmind/mujoco/discussions/2933
+        if not TaskSpaceControllerAction._registered_mjcb_control:
+            TaskSpaceControllerAction._registered_mjcb_control = True
+            if len(TaskSpaceControllerAction._mjcb_control_registry) > 1:
+                mujoco.set_mjcb_control(TaskSpaceControllerAction.mjcb_control_router)
+            else:
+                mujoco.set_mjcb_control(self.mjcb_control)
+        return self.env.reset(seed=seed, options=options)
 
     def action(self, action: WrapperActType) -> ActType:
         """Returns a modified action before :meth:`step` is called.

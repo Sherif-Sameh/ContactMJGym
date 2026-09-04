@@ -180,7 +180,7 @@ class MinkControllerAction(TaskSpaceControllerAction):
         """Resets the environment to an initial internal state, returning an initial
         observation and info.
         """
-        obs, info = self.env.reset(seed=seed, options=options)
+        obs, info = super().reset(seed=seed, options=options)
         # Reset frame tasks and mocap
         for task, mid, sid in zip(self._frame_tasks, self._mocapid, self._siteid):
             site_xpos, site_xmat = self.data.site_xpos[sid], self.data.site_xmat[sid]
