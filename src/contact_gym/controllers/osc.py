@@ -44,16 +44,17 @@ class OscControllerCfg(TaskSpaceControllerCfg):
     decouple_dynamics: bool = True
     """If True and `dynamically_consistent` is True, only the upper and lower 3x3 blocks
     of the operational space mass matrix are computed, ignoring the coupling between
-    translational and rotational dynamics. Default value is True."""
+    translational and rotational dynamics. Must be True if `dynamically_consistent` and
+    `null_project` are True for an accurate null-space projection. Default value is True."""
 
-    sigma_damp: float = 1e-3
+    sigma_damp: float = 1e-2
     """Damping factor for singular values when computing the operational space mass matrix
-    via the SVD. Used only if `dynamically_consistent` is True. Default value is 1e-3."""
+    via the SVD. Used only if `dynamically_consistent` is True. Default value is 1e-2."""
 
-    sigma_thr: float = 1e-5
+    sigma_thr: float = 1e-2
     """Singular value threshold for applying damping when computing the operational space
     mass matrix via the SVD. Used only if `dynamically_consistent` is True. Default value
-    is 1e-5."""
+    is 1e-2."""
 
     param_cfg: _ParameterCfg = _ParameterCfg(param_space="task")
     """Operational space stiffness and damping configuration (default override)."""
@@ -85,6 +86,8 @@ class OscControllerAction(TaskSpaceControllerAction):
     **Notes**:
     - See the common task-space notes defined in :class:`TaskSpaceControllerAction`.
     - Site linear and angular velocity sensors must be referenced to the global frame.
+    - If a dynamically-consistent null-space projection is required, `decouple_dynamics`
+        must be turned off.
     - If the null-space projection is enabled, its stiffness and damping parameters are
         always fixed. Variable configs in `null_param_cfg` are ignored.
 
@@ -95,10 +98,20 @@ class OscControllerAction(TaskSpaceControllerAction):
             parameters and operational space parameters. See :class:`OscControllerCfg`.
     """
 
+    @dataclass(slots=True)
+    class MjcbControlData(TaskSpaceControllerAction.MjcbControlData):
+        """Stores pre-computed data required for `mjcb_control` callback."""
+
+        kp_null: FloatArray | None = None
+        kv_null: FloatArray | None = None
+        ctrl_projector: FloatArray | None = None
+        null_projector: FloatArray | None = None
+
     def __init__(self, env: MujocoBaseEnv, cfg: OscControllerCfg = OscControllerCfg()):
         super().__init__(env, cfg=cfg)
         self._check_cfg(self.model, cfg)
         self.cfg = cfg  # for type-hints
+        self._mjcb_data = self.MjcbControlData()
         # Store site, mocap and sensor ids
         self._siteid = [self.model.site(site).id for site in cfg.sites]
         self._mocapid = [self.model.body_mocapid[self.model.body(mocap).id] for mocap in cfg.mocaps]
@@ -128,16 +141,16 @@ class OscControllerAction(TaskSpaceControllerAction):
         else:
             self._qpos_home = np.zeros((cfg.nrobot, self._per_rbt_dof_dim), dtype=np.float64)
         # Setup null-space control parameters
-        self._kp_null = (
+        self._mjcb_data.kp_null = (
             np.broadcast_to(cfg.null_param_cfg.kp, rbt_qpos_len).reshape((cfg.nrobot, -1)).copy()
         )
-        kp_null_sqrt = np.sqrt(self._kp_null)
+        kp_null_sqrt = np.sqrt(self._mjcb_data.kp_null)
         damping_null = (
             np.broadcast_to(cfg.null_param_cfg.damping, rbt_qpos_len)
             .reshape((cfg.nrobot, -1))
             .copy()
         )
-        self._kv_null = 2 * kp_null_sqrt * damping_null
+        self._mjcb_data.kv_null = 2 * kp_null_sqrt * damping_null
         # Disable base-class mass multiplication if dynamically consistent is set
         # to avoid unnecessary M @ M_inv matrix multiplication (compensated in get_robot_ctrl)
         if cfg.dynamically_consistent:
@@ -147,9 +160,9 @@ class OscControllerAction(TaskSpaceControllerAction):
         self._jac_full = np.zeros((cfg.nrobot, 6, self.model.nv), dtype=np.float64)
         self._jac_robot = np.zeros((cfg.nrobot, 6, self._per_rbt_dof_dim), dtype=np.float64)
         self._eye = np.eye(self._per_rbt_dof_dim, dtype=np.float64)
-        self._mass_matrix = np.zeros((self.model.nv, self.model.nv), dtype=np.float64)
         self._os_mass_matrix = np.zeros((cfg.nrobot, 6, 6), dtype=np.float64)
-        # Build function to update target poses and compute pose errors
+        # Build functions to update target poses and compute pose errors
+        self.update_targets = self._build_update_targets()
         self.get_pose_error = self._build_get_pose_error()
 
     def reset(
@@ -166,30 +179,21 @@ class OscControllerAction(TaskSpaceControllerAction):
             mujoco.mju_mat2Quat(self.data.mocap_quat[mid], self.data.site_xmat[sid])
         return obs, info
 
-    def get_robot_ctrl(self, ts_action: FloatArray, kp: FloatArray, kv: FloatArray) -> FloatArray:
-        """Compute the latest robot actuator ctrl signal.
+    def precompute_data(self, ts_action: FloatArray) -> None:
+        """Pre-compute data needed for ctrl computation during mjcb_control callback.
+
+        Called at the same rate as the environment stepping rate (sim_freq // frame_skip).
 
         Args:
             ts_action: Task-space control action for position and orientation.
                 Shape is (6 * `nrobot`).
-            kp: Positional gain (stiffness) for motion control. Shape is (`ncontrol`,).
-            kv: Velocity gain (computed from `kp` and damping ratio) for motion control.
-                Shape is (`ncontrol`,).
-
-        Returns:
-            Robot control signal computed from task-space action and motion control gains.
         """
         nrobot = self.cfg.nrobot
         rbt_dim = self._per_rbt_dof_dim
-        kp, kv = kp.reshape((nrobot, 6)), kv.reshape((nrobot, 6))
-        # Compute reference acceleration for main task
-        pose_err = self.get_pose_error(ts_action)
-        linvel = self.data.sensordata[self._lv_range].reshape((nrobot, 3))
-        site_xmat = self.data.site_xmat.take(self._siteid, axis=0).reshape((nrobot, 3, 3))
-        angvel = self.data.sensordata[self._av_range].reshape((nrobot, 3, 1))
-        angvel_local = (site_xmat.mT @ angvel)[:, :, 0]
-        site_vel = np.concatenate([linvel, angvel_local], axis=-1)
-        ctrl = kp * pose_err - kv * site_vel  # (nrobot, 6)
+        self._mjcb_data.kp = self._mjcb_data.kp.reshape((nrobot, 6))
+        self._mjcb_data.kv = self._mjcb_data.kv.reshape((nrobot, 6))
+        # Update target mocap poses in-place
+        self.update_targets(ts_action)
         # Compute full Jacobian matrix
         for i, (siteid, jac, qpos_adr) in enumerate(
             zip(self._siteid, self._jac_full, self._rbt_qpos_adr)
@@ -197,7 +201,7 @@ class OscControllerAction(TaskSpaceControllerAction):
             mujoco.mj_jacSite(self.model, self.data, jac[:3], jac[3:], siteid)
             jac[3:] = self.data.site_xmat[siteid].reshape(3, 3).mT @ jac[3:]
             self._jac_robot[i] = jac[:, qpos_adr : qpos_adr + rbt_dim]
-        # Project acceleration to joint-space
+        # Compute control projector
         if self.cfg.dynamically_consistent and self._comp_mass_mult > 0:
             # Get per-robot inverse of the scaled generalized mass matrix
             mujoco.mj_fullM(self.model, self.data, self._mass_matrix)
@@ -222,26 +226,43 @@ class OscControllerAction(TaskSpaceControllerAction):
                 self._os_mass_matrix[:] = self._get_damped_inverse(
                     self._jac_robot @ mass_matrix_inv @ self._jac_robot.mT
                 )
-            # Apply dynamically-consistent projection
-            ctrl = self._jac_robot.mT @ self._os_mass_matrix @ ctrl[:, :, None]
-            ctrl = ctrl[:, :, 0]  # (nrobot, rbt_dim)
+            # Compute the dynamically-consistent control projection
+            self._mjcb_data.ctrl_projector = self._jac_robot.mT @ self._os_mass_matrix
         else:
-            # Apply kinematic projection
-            ctrl = (self._jac_robot.mT @ ctrl[:, :, None])[:, :, 0]  # (nrobot, rbt_dim)
+            # Store the kinematic control projection
+            self._mjcb_data.ctrl_projector = self._jac_robot.mT
+        # Compute null space projector
         if self.cfg.null_project:
-            # Compute reference acceleration for joint configuration regularization
-            qpos = self.data.qpos[self._rbt_qpos_range].reshape(nrobot, rbt_dim)
-            qvel = self.data.qvel[self._rbt_dof_range].reshape(nrobot, rbt_dim)
-            ctrl_reg = self._kp_null * (self._qpos_home - qpos) - self._kv_null * qvel
-            # Apply null-space projection
             if self.cfg.dynamically_consistent and self._comp_mass_mult > 0:
-                ctrl_reg = mass_matrix @ ctrl_reg[:, :, None]
+                null_projector_mult = mass_matrix
                 jac_pinv_transpose = self._os_mass_matrix @ self._jac_robot @ mass_matrix_inv
             else:
-                ctrl_reg = ctrl_reg[:, :, None]
+                null_projector_mult = self._eye
                 jac_pinv_transpose = self._get_damped_inverse(self._jac_robot).mT
             null_projector_transpose = self._eye - self._jac_robot.mT @ jac_pinv_transpose
-            ctrl += (null_projector_transpose @ ctrl_reg)[:, :, 0]
+            self._mjcb_data.null_projector = null_projector_transpose @ null_projector_mult
+
+    def get_robot_ctrl(self, model: mujoco.MjModel, data: mujoco.MjData) -> FloatArray:
+        """Compute the latest robot actuator ctrl signal."""
+        nrobot = self.cfg.nrobot
+        rbt_dim = self._per_rbt_dof_dim
+        pose_err = self.get_pose_error()
+        # Compute and project reference acceleration for main task
+        linvel = data.sensordata[self._lv_range].reshape((nrobot, 3))
+        site_xmat = data.site_xmat.take(self._siteid, axis=0).reshape((nrobot, 3, 3))
+        angvel = data.sensordata[self._av_range].reshape((nrobot, 3, 1))
+        angvel_local = (site_xmat.mT @ angvel)[:, :, 0]
+        site_vel = np.concatenate([linvel, angvel_local], axis=-1)
+        ctrl = self._mjcb_data.kp * pose_err - self._mjcb_data.kv * site_vel  # (nrobot, 6)
+        ctrl = (self._mjcb_data.ctrl_projector @ ctrl[:, :, None])[:, :, 0]  # (nrobot, rbt_dim)
+        # Compute and project reference acceleration for joint configuration regularization
+        if self.cfg.null_project:
+            qpos = data.qpos[self._rbt_qpos_range].reshape(nrobot, rbt_dim)
+            qvel = data.qvel[self._rbt_dof_range].reshape(nrobot, rbt_dim)
+            ctrl_reg = (
+                self._mjcb_data.kp_null * (self._qpos_home - qpos) - self._mjcb_data.kv_null * qvel
+            )
+            ctrl += (self._mjcb_data.null_projector @ ctrl_reg[:, :, None])[:, :, 0]
         return ctrl.ravel()
 
     # region Helpers
@@ -262,6 +283,11 @@ class OscControllerAction(TaskSpaceControllerAction):
         assert cfg.null_param_cfg.param_space == "joint", (
             "OSC controller null-space only supports joint-space parameters."
         )
+        if cfg.dynamically_consistent and cfg.null_project:
+            assert not cfg.decouple_dynamics, (
+                "Decoupling dynamics cannot be enabled for a dynamically-consistent "
+                "null-space projection."
+            )
         assert all(
             mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_SITE, site) >= 0 for site in cfg.sites
         ), "Not all end-effector site names are valid. Check controller configuration."
@@ -296,26 +322,45 @@ class OscControllerAction(TaskSpaceControllerAction):
             mat, shape=new_shape, strides=new_strides, writeable=False
         )
 
-    def _build_get_pose_error(self) -> Callable[[FloatArray], FloatArray]:
+    def _build_update_targets(self) -> Callable[[FloatArray], None]:
         """Build the function to update mocap poses based-on the current site poses
-        and the given task-space action and compute the pose error."""
+        and the given task-space action."""
         nrobot = self.cfg.nrobot
         limits = np.array([self.cfg.max_tstep, self.cfg.max_rstep]).reshape(1, 2)
 
-        def get_pose_error(ts_action: FloatArray) -> FloatArray:
+        def update_targets(ts_action: FloatArray) -> None:
             ts_action = ts_action.reshape(nrobot, 2, 3)
             # Limit the action norms
             step = np.sqrt(np.sum(ts_action * ts_action, axis=2)) + 1e-12
             ts_action *= np.minimum(1.0, limits / step)[:, :, None]
-            # Update mocap position and compute its error
+            # Update mocap position
             site_xpos = self.data.site_xpos.take(self._siteid, axis=0)
             self.data.mocap_pos[self._mocapid] = site_xpos + ts_action[:, 0]
-            # Update mocap orientation and compute its error
+            # Update mocap orientation
             quat, xmat = self.data.mocap_quat, self.data.site_xmat
             for i, (mid, sid) in enumerate(zip(self._mocapid, self._siteid)):
                 mujoco.mju_mat2Quat(quat[mid], xmat[sid])
                 mujoco.mju_quatIntegrate(quat[mid], ts_action[i, 1], 1.0)
-            return ts_action.reshape(nrobot, 6)
+
+        return update_targets
+
+    def _build_get_pose_error(self) -> Callable[[], FloatArray]:
+        """Compute the pose error between the current mocap targets and site poses."""
+        nrobot = self.cfg.nrobot
+        site_quat = np.zeros(4, dtype=np.float64)
+        ori_err = np.zeros((nrobot, 3), dtype=np.float64)
+
+        def get_pose_error() -> FloatArray:
+            # Compute position error
+            site_xpos = self.data.site_xpos.take(self._siteid, axis=0)
+            mocap_pos = self.data.mocap_pos.take(self._mocapid, axis=0)
+            pos_err = mocap_pos - site_xpos
+            # Compute orienation error
+            quat, xmat = self.data.mocap_quat, self.data.site_xmat
+            for i, (mid, sid) in enumerate(zip(self._mocapid, self._siteid)):
+                mujoco.mju_mat2Quat(site_quat, xmat[sid])
+                mujoco.mju_subQuat(ori_err[i], quat[mid], site_quat)
+            return np.concatenate([pos_err, ori_err], axis=1)
 
         return get_pose_error
 
