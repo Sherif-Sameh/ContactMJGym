@@ -17,6 +17,7 @@ if TYPE_CHECKING:
     from ..envs.mujoco_base import InfoType, MujocoBaseEnv, ObsType
     from .task_space import FloatArray
 
+_ParameterCfg = TaskSpaceControllerCfg.ParameterCfg
 
 # region Config
 
@@ -97,6 +98,9 @@ class MinkControllerCfg(TaskSpaceControllerCfg):
     """Auxiliary limits to add to the default :class:`mink.ConfigurationLimit`.
     Default value is an empty list."""
 
+    param_cfg: _ParameterCfg = _ParameterCfg(kp=2000, damping=1.3)
+    """Stiffness and damping parameters configuration (default override)."""
+
 
 # region Controller
 
@@ -115,6 +119,8 @@ class MinkControllerAction(TaskSpaceControllerAction):
 
     **Notes**:
     - See the common task-space notes defined in :class:`TaskSpaceControllerAction`.
+    - Override default control gains according to robot and controller configuration for
+        optimal/smooth performance.
     - Wrapper relies on `mink`'s IK solver to compute target qpos, integrating frame and
         regularization tasks, then joint accelerations are computed via the configured or
         input (if variable) motion control parameters.
@@ -257,17 +263,15 @@ class MinkControllerAction(TaskSpaceControllerAction):
         return mink_action
 
     def _update_frame_targets(self, ts_action: FloatArray, limits: FloatArray) -> None:
-        """Update frame tasks targets using the current site poses and task-space actions."""
+        """Update frame tasks targets using their current poses and task-space actions."""
         ts_action = ts_action.reshape(self.cfg.nrobot, 2, 3)
         # Limit the action norms
         step = np.sqrt(np.sum(ts_action * ts_action, axis=2)) + 1e-12
         ts_action *= np.minimum(1.0, limits / step)[:, :, None]
-        # Add pose offsets to site poses in place and update mocaps and targets
-        for i, (task, mid, sid) in enumerate(zip(self._frame_tasks, self._mocapid, self._siteid)):
-            site_xpos, site_xmat = self.data.site_xpos[sid], self.data.site_xmat[sid]
+        # Add pose offsets to mocap poses in-place and update targets
+        for i, (task, mid) in enumerate(zip(self._frame_tasks, self._mocapid)):
             mocap_pos, mocap_quat = self.data.mocap_pos[mid], self.data.mocap_quat[mid]
-            mocap_pos[:] = site_xpos + ts_action[i, 0]
-            mujoco.mju_mat2Quat(mocap_quat, site_xmat)
+            mocap_pos += ts_action[i, 0]
             mujoco.mju_quatIntegrate(mocap_quat, ts_action[i, 1], 1.0)
             target = task.transform_target_to_world.wxyz_xyz
             target[:4], target[4:] = mocap_quat, mocap_pos

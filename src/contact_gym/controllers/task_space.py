@@ -124,11 +124,11 @@ class TaskSpaceControllerCfg:
 class TaskSpaceControllerAction(ABC, gym.ActionWrapper):
     """Base task-space action wrapper for MuJoCo manipulation environments.
 
-    Each action specifies, per robot, a **delta pose** relative to the end-effector
-    site's current pose:
+    Each action specifies, per robot, a **delta pose** relative to the current target
+    pose for the end-effector site:
     - A delta position offset, expressed in the world frame
     - A delta rotation, expressed as a rotation vector in the tangent space of the
-        site's current orientation.
+        target's current orientation.
 
     Allows for **configurable compensation** of robot inertia, bias
     (Coriolis + centrifugal + gravity), gravity only, viscous damping, or dry friction.
@@ -185,10 +185,11 @@ class TaskSpaceControllerAction(ABC, gym.ActionWrapper):
         self.cfg = cfg
         self.model = env.unwrapped.model
         self.data = env.unwrapped.data
+        self.frame_skip = env.unwrapped.frame_skip
+        self._nctrl_left = 0
         self._mjcb_data = self.MjcbControlData()
         mujoco.set_mjcb_control(self.mjcb_control)
-        # Setup action and full mass matrix buffers
-        self.action_buffer = np.zeros(self.model.nu, dtype=env.action_space.dtype)
+        # Setup full mass matrix buffer
         self._mass_matrix = np.zeros((self.model.nv, self.model.nv), dtype=np.float64)
         # Find separate robot and gripper actuator, ctrl and dof ids
         rbt_acts, gri_acts = self._split_model_actuators(self.model, cfg.fltr_acts_kwargs)
@@ -245,10 +246,13 @@ class TaskSpaceControllerAction(ABC, gym.ActionWrapper):
                 * self._mass_matrix[self._rbt_dof_range, self._rbt_dof_range]
             )
         self.precompute_data(ts_action)
+        # Invoke ctrl callback once to update robot ctrl
+        self._nctrl_left = self.frame_skip
+        self.mjcb_control(self.model, self.data)
         # Set gripper action
         if self._gri_ctrl_range:
-            self.action_buffer[self._gri_ctrl_range] = gri_action
-        return self.action_buffer
+            self.data.ctrl[self._gri_ctrl_range] = gri_action
+        return self.data.ctrl
 
     @abstractmethod
     def precompute_data(self, ts_action: FloatArray) -> None:
@@ -268,8 +272,9 @@ class TaskSpaceControllerAction(ABC, gym.ActionWrapper):
         Called at the same rate as the simulation stepping rate (sim_freq). Therefore,
         heavy computations should be offloaded to :func:`precompute_data`.
         """
-        if self._mjcb_data.kp is None:  # uninitialized data
-            return
+        if not self._nctrl_left:
+            return  # skip call after reset() or final mj_step1 call in step()
+        self._nctrl_left -= 1
         robot_ctrl = self.get_robot_ctrl(model, data)
         # Scale latest robot control by generalized mass matrix
         if self.cfg.comp_cfg.mass_mult > 0:
