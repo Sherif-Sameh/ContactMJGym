@@ -8,7 +8,7 @@ from gymnasium.wrappers import RescaleAction
 from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv, VecEnv, VecNormalize
 
-from contact_gym.controllers import ALL_CONTROLLERS, MinkControllerAction, MocapControllerAction
+from contact_gym.controllers import ALL_CONTROLLERS, CONTROLLER_TO_CLS
 
 if TYPE_CHECKING:
     from examples.sb3.common.config import EnvCfg, VecNormalizeCfg
@@ -79,15 +79,7 @@ def make_env_fn(
                 f"Unknown task-space controller type {ctrl_cfg.controller}."
                 f"Must be one of {ALL_CONTROLLERS}."
             )
-            ctrl_cls = (
-                MinkControllerAction if ctrl_cfg.controller == "mink" else MocapControllerAction
-            )
-            env = ctrl_cls(
-                env,
-                max_tstep=ctrl_cfg.max_tstep,
-                max_rstep=ctrl_cfg.max_rstep,
-                fltr_acts_kwargs=ctrl_cfg.fltr_acts_kwargs,
-            )
+            env = CONTROLLER_TO_CLS[ctrl_cfg.controller](env, ctrl_cfg.get_cfg())
         else:  # rescale raw action space
             env = RescaleAction(env, min_action=-1, max_action=1)
         return env

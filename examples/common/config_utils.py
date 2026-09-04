@@ -1,21 +1,3 @@
-"""
-Utilities for turning TOML-loaded dicts into (possibly nested) Python object instances
-with support for dynamically importing and instantiating objects from the config itself.
-
-Convention
-----------
-Anywhere in the TOML you can write a table shaped like::
-
-    [some.path]
-    class = "package.module.ClassName"
-
-    [some.path.kwargs]
-    foo = 1
-    bar = "baz"
-
-and it will be turned into `ClassName(foo=1, bar="baz")` at load time.
-"""
-
 from __future__ import annotations
 
 import dataclasses

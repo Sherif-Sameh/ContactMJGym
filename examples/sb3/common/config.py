@@ -3,22 +3,40 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
-import numpy as np
+from contact_gym.controllers import (  # noqa: TC001
+    MinkControllerCfg,
+    MocapControllerCfg,
+    OscControllerCfg,
+)
 
 
 @dataclass
-class TaskSpaceControllerCfg:
+class TaskSpaceControllerWrapperCfg:
     """Task-space controller wrapper configuration.
 
-    Used to initialize one of :class:`~contact_gym.controllers.MocapControllerAction`
-    or :class:`~contact_gym.controllers.MinkControllerAction` or None (joint-space control).
+    Used to initialize one of the task-space controllers from
+    :class:`contact_gym.controllers.ALL_CONTROLLERS` or None (joint-space control).
     """
 
     enabled: bool = True
-    controller: Literal["mocap", "mink"] = "mocap"
-    max_tstep: float = 0.02
-    max_rstep: float = 0.04 * np.pi
-    fltr_acts_kwargs: dict[str, Any] = field(default_factory=dict)
+    controller: Literal["mink", "mocap", "osc"] = "mocap"
+    mink_cfg: MinkControllerCfg | None = None
+    mocap_cfg: MocapControllerCfg | None = None
+    osc_cfg: OscControllerCfg | None = None
+
+    def get_cfg(self):
+        """Get the configuration of the active set controller if any."""
+        if not self.enabled:
+            return None
+        match self.controller:
+            case "mink":
+                return self.mink_cfg
+            case "mocap":
+                return self.mocap_cfg
+            case "osc":
+                return self.osc_cfg
+            case _:
+                raise ValueError(f"Invalid task-space controller {self.controller}.")
 
 
 @dataclass
@@ -44,7 +62,7 @@ class EnvCfg:
     vec_env_type: Literal["dummy", "subproc"] = "dummy"
     seed: int = 0
     env_kwargs: dict[str, Any] = field(default_factory=dict)
-    tscontroller: TaskSpaceControllerCfg | None = None
+    tscontroller: TaskSpaceControllerWrapperCfg | None = None
     vecnormalize: VecNormalizeCfg | None = None
     monitor_info_keywords: list[str] = field(default_factory=list)
 
