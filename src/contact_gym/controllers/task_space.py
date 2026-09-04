@@ -90,18 +90,18 @@ class TaskSpaceControllerCfg:
         param_space: ParamSpace = "joint"
         """Space where parameters are defined. Default value is 'joint'."""
 
-        kp: float | Sequence[float] = 100.0
+        kp: float | tuple[float, ...] = 100.0
         """Positional gain (stiffness) for motion control. Space according to
-        `param_space`. If a sequence is given, its length must match the expected number
+        `param_space`. If a tuple is given, its length must match the expected number
         of DOFs. If `kp_type` is variable, value is interpreted as the maximum value.
         Default value is 100."""
 
         kp_type: ParamType = "fixed"
         """Positional gain (stiffness) type. Default value is 'fixed'."""
 
-        damping: float | Sequence[float] = 1.0
+        damping: float | tuple[float, ...] = 1.0
         """Damping ratio for motion control. Space according to `param_space`. If a
-        sequence is given, its length must match the expected number of DOFs. If
+        tuple is given, its length must match the expected number of DOFs. If
         `damping_type` is variable, value is interpreted as the maximum value.
         Default value is 1."""
 

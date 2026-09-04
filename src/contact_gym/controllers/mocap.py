@@ -9,8 +9,6 @@ import numpy as np
 from .task_space import TaskSpaceControllerAction, TaskSpaceControllerCfg
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
-
     from ..envs.mujoco_base import InfoType, MujocoBaseEnv, ObsType
     from .task_space import FloatArray
 
@@ -22,11 +20,11 @@ if TYPE_CHECKING:
 class MocapControllerCfg(TaskSpaceControllerCfg):
     """Mocap task-space controller action wrapper configuration."""
 
-    eq_solimp: Sequence[float] | None = None
+    eq_solimp: tuple[float, ...] | None = None
     """Optional solver impedence parameters for overriding weld equality constraint
     parameters. Default value is None."""
 
-    eq_solref: Sequence[float] | None = None
+    eq_solref: tuple[float, ...] | None = None
     """Optional solver reference parameters for overriding weld equality constraint
     parameters. Default value is None."""
 
@@ -179,8 +177,8 @@ class MocapControllerAction(TaskSpaceControllerAction):
         model: mujoco.MjModel,
         data: mujoco.MjData,
         nrobot: int,
-        solimp: Sequence[float] | None,
-        solref: Sequence[float] | None,
+        solimp: tuple[float, ...] | None,
+        solref: tuple[float, ...] | None,
     ) -> tuple[slice | tuple[int, ...], slice | tuple[int, ...]]:
         """Enable weld constraints involving mocap bodies and return mocap -> site id map."""
         # Enable weld constraints and establish mocap -> site id map
