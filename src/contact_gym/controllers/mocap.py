@@ -34,13 +34,13 @@ class MocapControllerCfg(TaskSpaceControllerCfg):
     """If True, apply null-space projection to regularization joint accelerations.
     Default value is False."""
 
-    sigma_damp: float = 1e-3
+    sigma_damp: float = 1e-2
     """Damping factor for singular values when computing Moore-Penrose pseudoinverse
-    of the Jacobian via the SVD. Default value is 1e-3."""
+    of the Jacobian via the SVD. Default value is 1e-2."""
 
-    sigma_thr: float = 1e-5
+    sigma_thr: float = 1e-2
     """Singular value threshold for applying damping when computing Moore-Penrose
-    pseudoinverse of the Jacobian via the SVD. Default value is 1e-5."""
+    pseudoinverse of the Jacobian via the SVD. Default value is 1e-2."""
 
 
 # region Controller

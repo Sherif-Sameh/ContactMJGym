@@ -364,12 +364,17 @@ class TaskSpaceControllerAction(ABC, gym.ActionWrapper):
         residual = []
         for act in actuators:
             jnt_id = model.actuator_trnid[act, 0]
+            model.jnt_actgravcomp[jnt_id] = True
+            # Update frictionloss
             dof_adr = model.jnt_dofadr[jnt_id]
-            body_id = model.jnt_bodyid[jnt_id]
             residual.append(model.dof_frictionloss[dof_adr] * max(fric_mult - 1, 0))
             model.dof_frictionloss[dof_adr] *= max(1 - fric_mult, 0)
-            model.jnt_actgravcomp[jnt_id] = True
-            model.body_gravcomp[body_id] = grav_mult
+            # Update gravcomp of body and any of its descendents
+            body_id = model.jnt_bodyid[jnt_id]
+            subtree = model.body_rootid == model.body_rootid[body_id]
+            model.body_gravcomp[subtree] = grav_mult
+        if grav_mult > 0:
+            model.flg_gravcomp = True
         return tuple(residual)
 
     @staticmethod
