@@ -199,7 +199,7 @@ class MinkControllerAction(TaskSpaceControllerAction):
                 Shape is (6 * `nrobot`).
         """
         # Update target qpos via mink
-        self._mjcb_data.qpos_target = self.mink_action(ts_action)
+        self._mjcb_data.qpos_target = self.mink_action(self.data, ts_action)
 
     def get_robot_ctrl(self, model: mujoco.MjModel, data: mujoco.MjData) -> FloatArray:
         """Compute the latest robot actuator ctrl signal."""
@@ -235,17 +235,17 @@ class MinkControllerAction(TaskSpaceControllerAction):
 
     # region Action Helpers
 
-    def _build_mink_action(self) -> Callable[[FloatArray], FloatArray]:
+    def _build_mink_action(self) -> Callable[[mujoco.MjData, FloatArray], FloatArray]:
         """Build the action function to solve IK via mink and compute target qpos given
         the current task-space action."""
         mink_cfg = self.cfg.mink_cfg
         dt = self.model.opt.timestep if mink_cfg.dt <= 0 else mink_cfg.dt
         pos_thr_sqr, ori_thr_sqr = mink_cfg.pos_thr**2, mink_cfg.ori_thr**2
-        limits = np.array([self.cfg.max_tstep, self.cfg.max_rstep]).reshape(1, 2)
+        limits = np.array([self.cfg.max_tstep, self.cfg.max_rstep]).reshape(1, 2, 1)
 
-        def mink_action(ts_action: FloatArray) -> None:
-            self._configuration.update(self.data.qpos)
-            self._update_frame_targets(ts_action, limits)
+        def mink_action(data: mujoco.MjData, ts_action: FloatArray) -> FloatArray:
+            self._configuration.update(data.qpos)
+            self._update_frame_targets(data, ts_action, limits)
             for _ in range(mink_cfg.max_iters):
                 vel = mink.solve_ik(
                     self._configuration,
@@ -262,15 +262,17 @@ class MinkControllerAction(TaskSpaceControllerAction):
 
         return mink_action
 
-    def _update_frame_targets(self, ts_action: FloatArray, limits: FloatArray) -> None:
+    def _update_frame_targets(
+        self, data: mujoco.MjData, ts_action: FloatArray, limits: FloatArray
+    ) -> None:
         """Update frame tasks targets using their current poses and task-space actions."""
         ts_action = ts_action.reshape(self.cfg.nrobot, 2, 3)
         # Limit the action norms
-        step = np.sqrt(np.sum(ts_action * ts_action, axis=2)) + 1e-12
-        ts_action *= np.minimum(1.0, limits / step)[:, :, None]
+        step = np.sqrt(np.sum(ts_action * ts_action, axis=2, keepdims=True)) + 1e-12
+        ts_action *= np.minimum(1.0, limits / step)
         # Add pose offsets to mocap poses in-place and update targets
         for i, (task, mid) in enumerate(zip(self._frame_tasks, self._mocapid)):
-            mocap_pos, mocap_quat = self.data.mocap_pos[mid], self.data.mocap_quat[mid]
+            mocap_pos, mocap_quat = data.mocap_pos[mid], data.mocap_quat[mid]
             mocap_pos += ts_action[i, 0]
             mujoco.mju_quatIntegrate(mocap_quat, ts_action[i, 1], 1.0)
             target = task.transform_target_to_world.wxyz_xyz

@@ -162,6 +162,7 @@ class OscControllerAction(TaskSpaceControllerAction):
         self._jac_full = np.zeros((cfg.nrobot, 6, self.model.nv), dtype=np.float64)
         self._jac_robot = np.zeros((cfg.nrobot, 6, self._per_rbt_dof_dim), dtype=np.float64)
         self._eye = np.eye(self._per_rbt_dof_dim, dtype=np.float64)
+        self._mass_matrix = np.zeros((self.model.nv, self.model.nv), dtype=np.float64)
         self._os_mass_matrix = np.zeros((cfg.nrobot, 6, 6), dtype=np.float64)
         # Build functions to update target poses and compute pose errors
         self.update_targets = self._build_update_targets()
@@ -195,7 +196,7 @@ class OscControllerAction(TaskSpaceControllerAction):
         self._mjcb_data.kp = self._mjcb_data.kp.reshape((nrobot, 6))
         self._mjcb_data.kv = self._mjcb_data.kv.reshape((nrobot, 6))
         # Update target mocap poses in-place
-        self.update_targets(ts_action)
+        self.update_targets(self.data, ts_action)
         # Compute full Jacobian matrix
         for i, (siteid, jac, qpos_adr) in enumerate(
             zip(self._siteid, self._jac_full, self._rbt_qpos_adr)
@@ -248,7 +249,7 @@ class OscControllerAction(TaskSpaceControllerAction):
         """Compute the latest robot actuator ctrl signal."""
         nrobot = self.cfg.nrobot
         rbt_dim = self._per_rbt_dof_dim
-        pose_err = self.get_pose_error()
+        pose_err = self.get_pose_error(data)
         # Compute and project reference acceleration for main task
         linvel = data.sensordata[self._lv_range].reshape((nrobot, 3))
         site_xmat = data.site_xmat.take(self._siteid, axis=0).reshape((nrobot, 3, 3))
@@ -324,38 +325,38 @@ class OscControllerAction(TaskSpaceControllerAction):
             mat, shape=new_shape, strides=new_strides, writeable=False
         )
 
-    def _build_update_targets(self) -> Callable[[FloatArray], None]:
+    def _build_update_targets(self) -> Callable[[mujoco.MjData, FloatArray], None]:
         """Build the function to update mocap poses based-on their current poses and the
         given task-space action."""
         nrobot = self.cfg.nrobot
-        limits = np.array([self.cfg.max_tstep, self.cfg.max_rstep]).reshape(1, 2)
+        limits = np.array([self.cfg.max_tstep, self.cfg.max_rstep]).reshape(1, 2, 1)
 
-        def update_targets(ts_action: FloatArray) -> None:
+        def update_targets(data: mujoco.MjData, ts_action: FloatArray) -> None:
             ts_action = ts_action.reshape(nrobot, 2, 3)
             # Limit the action norms
-            step = np.sqrt(np.sum(ts_action * ts_action, axis=2)) + 1e-12
-            ts_action *= np.minimum(1.0, limits / step)[:, :, None]
+            step = np.sqrt(np.sum(ts_action * ts_action, axis=2, keepdims=True)) + 1e-12
+            ts_action *= np.minimum(1.0, limits / step)
             # Add pose offsets to mocap poses in-place
-            self.data.mocap_pos[self._mocapid] += ts_action[:, 0]
-            quat = self.data.mocap_quat
+            data.mocap_pos[self._mocapid] += ts_action[:, 0]
+            quat = data.mocap_quat
             for i, mid in enumerate(self._mocapid):
                 mujoco.mju_quatIntegrate(quat[mid], ts_action[i, 1], 1.0)
 
         return update_targets
 
-    def _build_get_pose_error(self) -> Callable[[], FloatArray]:
+    def _build_get_pose_error(self) -> Callable[[mujoco.MjData], FloatArray]:
         """Compute the pose error between the current mocap targets and site poses."""
         nrobot = self.cfg.nrobot
         site_quat = np.zeros(4, dtype=np.float64)
         ori_err = np.zeros((nrobot, 3), dtype=np.float64)
 
-        def get_pose_error() -> FloatArray:
+        def get_pose_error(data: mujoco.MjData) -> FloatArray:
             # Compute position error
-            site_xpos = self.data.site_xpos.take(self._siteid, axis=0)
-            mocap_pos = self.data.mocap_pos.take(self._mocapid, axis=0)
+            site_xpos = data.site_xpos.take(self._siteid, axis=0)
+            mocap_pos = data.mocap_pos.take(self._mocapid, axis=0)
             pos_err = mocap_pos - site_xpos
             # Compute orienation error
-            quat, xmat = self.data.mocap_quat, self.data.site_xmat
+            quat, xmat = data.mocap_quat, data.site_xmat
             for i, (mid, sid) in enumerate(zip(self._mocapid, self._siteid)):
                 mujoco.mju_mat2Quat(site_quat, xmat[sid])
                 mujoco.mju_subQuat(ori_err[i], quat[mid], site_quat)

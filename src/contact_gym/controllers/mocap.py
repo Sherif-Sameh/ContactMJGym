@@ -136,7 +136,7 @@ class MocapControllerAction(TaskSpaceControllerAction):
                 Shape is (6 * `nrobot`).
         """
         # Update target mocap poses in-place
-        self.mocap_action(ts_action)
+        self.mocap_action(self.data, ts_action)
         # Compute Jacobian and null projector
         if self.cfg.null_project:
             mujoco.mj_jacSite(
@@ -213,20 +213,20 @@ class MocapControllerAction(TaskSpaceControllerAction):
 
     # region Action Helpers
 
-    def _build_mocap_action(self) -> Callable[[FloatArray], None]:
+    def _build_mocap_action(self) -> Callable[[mujoco.MjData, FloatArray], None]:
         """Build the mocap action function to update mocap poses based-on their current
         poses and the given task-space action."""
         nrobot = self.cfg.nrobot
-        limits = np.array([self.cfg.max_tstep, self.cfg.max_rstep]).reshape(1, 2)
+        limits = np.array([self.cfg.max_tstep, self.cfg.max_rstep]).reshape(1, 2, 1)
 
-        def mocap_action(ts_action: FloatArray) -> None:
+        def mocap_action(data: mujoco.MjData, ts_action: FloatArray) -> None:
             ts_action = ts_action.reshape(nrobot, 2, 3)
             # Limit the action norms
-            step = np.sqrt(np.sum(ts_action * ts_action, axis=2)) + 1e-12
-            ts_action *= np.minimum(1.0, limits / step)[:, :, None]
+            step = np.sqrt(np.sum(ts_action * ts_action, axis=2, keepdims=True)) + 1e-12
+            ts_action *= np.minimum(1.0, limits / step)
             # Add pose offsets to mocap poses in-place
-            self.data.mocap_pos[self._mocapid] += ts_action[:, 0]
-            quat = self.data.mocap_quat
+            data.mocap_pos[self._mocapid] += ts_action[:, 0]
+            quat = data.mocap_quat
             for i, mid in enumerate(self._mocapid):
                 mujoco.mju_quatIntegrate(quat[mid], ts_action[i, 1], 1.0)
 
