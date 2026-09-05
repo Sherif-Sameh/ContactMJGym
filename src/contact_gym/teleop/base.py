@@ -3,7 +3,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, TypeAlias
 
-from ..controllers.task_space import TaskSpaceControllerAction
+from ..wrappers.controllers.task_space import TaskSpaceControllerAction
 
 if TYPE_CHECKING:
     import gymnasium as gym

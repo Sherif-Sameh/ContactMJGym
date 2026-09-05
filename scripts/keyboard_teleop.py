@@ -74,20 +74,23 @@ def main(
     teleop = Keyboard(env, gripper_step=gripper_step, speed_init=speed_init, speed_step=speed_step)
     teleop.print_controls()
 
+    last_reward = None
     last_status = ""
     frame_dt = 1 / unwrapped.metadata["render_fps"]
     next_frame = time.perf_counter()
     while unwrapped.viewer_is_running:
         # Get and apply action
         action = teleop.get_action()
-        _, _, terminated, truncated, _ = env.step(action)
+        _, reward, terminated, truncated, _ = env.step(action)
         if terminated or truncated:
             env.reset()
             teleop.reset()
-        # Print updated teleop status
+        # Print updated reward and teleop status
+        reward = round(reward, ndigits=3)
         status = teleop.get_status_str()
-        if status != last_status:
-            print("\r" + status + " " * 10, end="", flush=True)
+        if reward != last_reward or status != last_status:
+            print("\r" + f"reward: {reward:.3f} " + status + " " * 10, end="", flush=True)
+            last_reward = reward
             last_status = status
         # Rate limit loop
         next_frame += frame_dt
