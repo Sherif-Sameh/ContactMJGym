@@ -1,3 +1,3 @@
-from . import controllers
+from . import controllers, observation
 
-__all__ = ["controllers"]
+__all__ = ["controllers", "observation"]
