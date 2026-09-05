@@ -14,7 +14,7 @@ except ImportError:
 from .task_space import TaskSpaceControllerAction, TaskSpaceControllerCfg
 
 if TYPE_CHECKING:
-    from ..envs.mujoco_base import InfoType, MujocoBaseEnv, ObsType
+    from ...envs.mujoco_base import InfoType, MujocoBaseEnv, ObsType
     from .task_space import FloatArray
 
 _ParameterCfg = TaskSpaceControllerCfg.ParameterCfg

@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
-from contact_gym.controllers import (  # noqa: TC001
+from contact_gym.wrappers.controllers import (  # noqa: TC001
     MinkControllerCfg,
     MocapControllerCfg,
     OscControllerCfg,

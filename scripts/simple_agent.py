@@ -7,8 +7,8 @@ import mujoco
 from numpy.typing import NDArray
 
 import contact_gym  # noqa: F401
-from contact_gym.controllers import ALL_CONTROLLERS, CONTROLLER_TO_CLS
 from contact_gym.envs import EdgeGraspEnvCfg
+from contact_gym.wrappers.controllers import ALL_CONTROLLERS, CONTROLLER_TO_CLS
 
 SceneCfg = EdgeGraspEnvCfg.SceneCfg
 

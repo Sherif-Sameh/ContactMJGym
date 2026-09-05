@@ -4,10 +4,14 @@ import fire
 import gymnasium as gym
 
 import contact_gym  # noqa: F401
-from contact_gym.controllers import ALL_CONTROLLERS, CONTROLLER_TO_CFG_CLS, CONTROLLER_TO_CLS
-from contact_gym.controllers.task_space import TaskSpaceControllerCfg
 from contact_gym.envs import EdgeGraspEnvCfg
 from contact_gym.teleop import Keyboard
+from contact_gym.wrappers.controllers import (
+    ALL_CONTROLLERS,
+    CONTROLLER_TO_CFG_CLS,
+    CONTROLLER_TO_CLS,
+)
+from contact_gym.wrappers.controllers.task_space import TaskSpaceControllerCfg
 
 SceneCfg = EdgeGraspEnvCfg.SceneCfg
 CompensationCfg = TaskSpaceControllerCfg.CompensationCfg

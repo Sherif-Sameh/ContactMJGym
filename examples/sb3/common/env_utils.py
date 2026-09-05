@@ -8,7 +8,7 @@ from gymnasium.wrappers import RescaleAction
 from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv, VecEnv, VecNormalize
 
-from contact_gym.controllers import ALL_CONTROLLERS, CONTROLLER_TO_CLS
+from contact_gym.wrappers.controllers import ALL_CONTROLLERS, CONTROLLER_TO_CLS
 
 if TYPE_CHECKING:
     from examples.sb3.common.config import EnvCfg, VecNormalizeCfg

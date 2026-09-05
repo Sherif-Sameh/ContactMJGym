@@ -12,13 +12,13 @@ import numpy as np
 from gymnasium import spaces
 from gymnasium.wrappers.utils import rescale_box
 
-from ..envs.mujoco_base import MujocoBaseEnv
-from ..utils.mj_utils import filter_actuators, mjtjoint_to_dof_dim, mjtjoint_to_qpos_dim
+from ...envs.mujoco_base import MujocoBaseEnv
+from ...utils.mj_utils import filter_actuators, mjtjoint_to_dof_dim, mjtjoint_to_qpos_dim
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
-    from ..envs.mujoco_base import ActType, FloatArray, InfoType, ObsType
+    from ...envs.mujoco_base import ActType, FloatArray, InfoType, ObsType
 
     WrapperActType: TypeAlias = ActType
 
