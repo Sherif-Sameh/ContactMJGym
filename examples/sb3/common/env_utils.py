@@ -9,6 +9,7 @@ from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv, VecEnv, VecNormalize
 
 from contact_gym.wrappers.controllers import ALL_CONTROLLERS, CONTROLLER_TO_CLS
+from contact_gym.wrappers.observation import ActionHistoryWrapper
 
 if TYPE_CHECKING:
     from examples.sb3.common.config import EnvCfg, VecNormalizeCfg
@@ -58,7 +59,7 @@ def make_env_fn(
     env_cfg: EnvCfg, rank: int, monitor: bool = True, monitor_dir: str | None = None
 ) -> Callable[[], gym.Env]:
     """Create factory function for single gymnasium environments with optional
-    :class:`Monitor` and task-space controller wrappers.
+    :class:`Monitor`, task-space controller, and :class:`ActionHistoryWrapper` wrappers.
 
     If no controller is selected, the raw unscaled action space is rescaled to [-1, 1].
     """
@@ -82,6 +83,11 @@ def make_env_fn(
             env = CONTROLLER_TO_CLS[ctrl_cfg.controller](env, ctrl_cfg.get_cfg())
         else:  # rescale raw action space
             env = RescaleAction(env, min_action=-1, max_action=1)
+        if env_cfg.actionhistory is not None and env_cfg.actionhistory.enabled:
+            hist_cfg = env_cfg.actionhistory
+            env = ActionHistoryWrapper(
+                env, n_stack=hist_cfg.n_stack, reset_value=hist_cfg.reset_value
+            )
         return env
 
     return _init

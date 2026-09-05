@@ -40,6 +40,19 @@ class TaskSpaceControllerWrapperCfg:
 
 
 @dataclass
+class ActionHistoryWrapperCfg:
+    """Action history wrapper configuration.
+
+    Used to add an :class:`ActionHistoryWrapper` to the environment to append previous
+    action history onto the environment's observations.
+    """
+
+    enabled: bool = True
+    n_stack: int = 1
+    reset_value: float = 0.0
+
+
+@dataclass
 class VecNormalizeCfg:
     """SB3 :class:`stable_baselines3.common.vec_env.VecNormalize` wrapper configuration."""
 
@@ -63,6 +76,7 @@ class EnvCfg:
     seed: int = 0
     env_kwargs: dict[str, Any] = field(default_factory=dict)
     tscontroller: TaskSpaceControllerWrapperCfg | None = None
+    actionhistory: ActionHistoryWrapperCfg | None = None
     vecnormalize: VecNormalizeCfg | None = None
     monitor_info_keywords: list[str] = field(default_factory=list)
 
