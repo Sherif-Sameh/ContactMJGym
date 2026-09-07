@@ -328,21 +328,27 @@ class OscControllerAction(TaskSpaceControllerAction):
         )
 
     def _build_update_targets(self) -> Callable[[mujoco.MjData, FloatArray], None]:
-        """Build the function to update mocap poses based-on their current poses and the
+        """Build the function to update mocap poses using the current site poses and the
         given task-space action."""
         nrobot = self.cfg.nrobot
         limits = np.array([self.cfg.max_tstep, self.cfg.max_rstep]).reshape(1, 2, 1)
+        min_tstep, min_rstep = self.cfg.min_tstep, self.cfg.min_rstep
 
         def update_targets(data: mujoco.MjData, ts_action: FloatArray) -> None:
             ts_action = ts_action.reshape(nrobot, 2, 3)
             # Limit the action norms
             step = np.sqrt(np.sum(ts_action * ts_action, axis=2, keepdims=True)) + 1e-12
             ts_action *= np.minimum(1.0, limits / step)
-            # Add pose offsets to mocap poses in-place
-            data.mocap_pos[self._mocapid] += ts_action[:, 0]
+            # Add pose offsets to site poses
+            site_xpos = self.data.site_xpos.take(self._siteid, axis=0)
+            data.mocap_pos[self._mocapid] = np.where(
+                step[:, 0] > min_tstep, site_xpos + ts_action[:, 0], data.mocap_pos[self._mocapid]
+            )
             quat = data.mocap_quat
-            for i, mid in enumerate(self._mocapid):
-                mujoco.mju_quatIntegrate(quat[mid], ts_action[i, 1], 1.0)
+            for i, (mid, sid) in enumerate(zip(self._mocapid, self._siteid)):
+                if step[i, 1, 0] > min_rstep:
+                    mujoco.mju_mat2Quat(quat[mid], self.data.site_xmat[sid])
+                    mujoco.mju_quatIntegrate(quat[mid], ts_action[i, 1], 1.0)
 
         return update_targets
 

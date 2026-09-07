@@ -55,6 +55,14 @@ class TaskSpaceControllerCfg:
     """Maximum rotation step size (rotation vector norm, in radians) applied per action.
     Defaults value is 0.04 * pi."""
 
+    min_tstep: float = 1e-4
+    """Minimum translation step size (see `max_tstep`) for resyncing and updating the
+    target position to prevent drift when stationary. Default value is 1e-4."""
+
+    min_rstep: float = 1e-4 * np.pi
+    """Minimum rotation step size (see `max_rstep`) for resyncing and updating the
+    target orientation to prevent drift when stationary. Default value is 1e-4 * pi."""
+
     fltr_acts_kwargs: dict[str, Any] = field(default_factory=dict)
     """Kwargs for filtering for gripper actuators. For details, see :func:`filter_actuators`.
     If empty, we rely on a simple heuristic by filtering for actuators whose `trntype` is
@@ -124,8 +132,8 @@ class TaskSpaceControllerCfg:
 class TaskSpaceControllerAction(ABC, gym.ActionWrapper):
     """Base task-space action wrapper for MuJoCo manipulation environments.
 
-    Each action specifies, per robot, a **delta pose** relative to the current target
-    pose for the end-effector site:
+    Each action specifies, per robot, a **delta pose** relative to the current pose
+    for the end-effector site:
     - A delta position offset, expressed in the world frame
     - A delta rotation, expressed as a rotation vector in the tangent space of the
         target's current orientation.
@@ -139,7 +147,9 @@ class TaskSpaceControllerAction(ABC, gym.ActionWrapper):
     maximum step size. Actions are ordered as (delta pose, stiffness, damping ratio,
     gripper controls) if the full action space with variable motion parameters is used.
     Actions are expected in a normalized [-1, 1] range and are internally unscaled, split
-    into their individual parts and used accordingly.
+    into their individual parts and used accordingly. If the magnitude of actions is less
+    than `min_tstep` for translations or `min_rstep` for rotations, the targets are not
+    resynced with sites and updated to prevent target drift due to non-stationary site.
 
     **Notes**:
     - Wrapper assumes *no other* action wrappers have been already applied to the

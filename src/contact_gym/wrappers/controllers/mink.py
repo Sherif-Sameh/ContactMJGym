@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
+from functools import partial
 from typing import TYPE_CHECKING, Any, Callable
 
 import mujoco
@@ -243,10 +244,16 @@ class MinkControllerAction(TaskSpaceControllerAction):
         dt = self.model.opt.timestep if mink_cfg.dt <= 0 else mink_cfg.dt
         pos_thr_sqr, ori_thr_sqr = mink_cfg.pos_thr**2, mink_cfg.ori_thr**2
         limits = np.array([self.cfg.max_tstep, self.cfg.max_rstep]).reshape(1, 2, 1)
+        update_frame_targets = partial(
+            self._update_frame_targets,
+            limits=limits,
+            min_tstep=self.cfg.min_tstep,
+            min_rstep=self.cfg.min_rstep,
+        )
 
         def mink_action(data: mujoco.MjData, ts_action: FloatArray) -> FloatArray:
             self._configuration.update(data.qpos)
-            self._update_frame_targets(data, ts_action, limits)
+            update_frame_targets(data, ts_action)
             for _ in range(mink_cfg.max_iters):
                 vel = mink.solve_ik(
                     self._configuration,
@@ -264,18 +271,26 @@ class MinkControllerAction(TaskSpaceControllerAction):
         return mink_action
 
     def _update_frame_targets(
-        self, data: mujoco.MjData, ts_action: FloatArray, limits: FloatArray
+        self,
+        data: mujoco.MjData,
+        ts_action: FloatArray,
+        limits: FloatArray,
+        min_tstep: float,
+        min_rstep: float,
     ) -> None:
-        """Update frame tasks targets using their current poses and task-space actions."""
+        """Update frame tasks targets using the current site poses and task-space actions."""
         ts_action = ts_action.reshape(self.cfg.nrobot, 2, 3)
         # Limit the action norms
         step = np.sqrt(np.sum(ts_action * ts_action, axis=2, keepdims=True)) + 1e-12
         ts_action *= np.minimum(1.0, limits / step)
-        # Add pose offsets to mocap poses in-place and update targets
-        for i, (task, mid) in enumerate(zip(self._frame_tasks, self._mocapid)):
+        # Add pose offsets to site poses and update targets
+        for i, (task, mid, sid) in enumerate(zip(self._frame_tasks, self._mocapid, self._siteid)):
             mocap_pos, mocap_quat = data.mocap_pos[mid], data.mocap_quat[mid]
-            mocap_pos += ts_action[i, 0]
-            mujoco.mju_quatIntegrate(mocap_quat, ts_action[i, 1], 1.0)
+            if step[i, 0, 0] > min_tstep:
+                mocap_pos[:] = self.data.site_xpos[sid] + ts_action[i, 0]
+            if step[i, 1, 0] > min_rstep:
+                mujoco.mju_mat2Quat(mocap_quat, self.data.site_xmat[sid])
+                mujoco.mju_quatIntegrate(mocap_quat, ts_action[i, 1], 1.0)
             target = task.transform_target_to_world.wxyz_xyz
             target[:4], target[4:] = mocap_quat, mocap_pos
 
