@@ -47,13 +47,13 @@ class TaskSpaceControllerCfg:
     nrobot: int = 1
     """Number of robot manipulators to control. Default value is 1."""
 
-    max_tstep: float = 0.02
+    max_tstep: float = 0.04
     """Maximum translation step size (Euclidean norm, in meters) applied per action.
-    Default value is 0.02."""
+    Default value is 0.04."""
 
-    max_rstep: float = 0.04 * np.pi
+    max_rstep: float = 0.08 * np.pi
     """Maximum rotation step size (rotation vector norm, in radians) applied per action.
-    Defaults value is 0.04 * pi."""
+    Defaults value is 0.08 * pi."""
 
     min_tstep: float = 1e-4
     """Minimum translation step size (see `max_tstep`) for resyncing and updating the
