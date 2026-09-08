@@ -3,7 +3,8 @@ from __future__ import annotations
 import logging
 from abc import ABC, abstractmethod
 from collections import ChainMap
-from typing import TYPE_CHECKING, Any, Literal, TypeAlias
+from enum import StrEnum
+from typing import TYPE_CHECKING, Any, TypeAlias
 
 import gymnasium as gym
 import mujoco
@@ -28,6 +29,13 @@ if TYPE_CHECKING:
     RGBType: TypeAlias = NDArray[np.uint8]
 
 logger = logging.getLogger(__name__)
+
+
+class RewardType(StrEnum):
+    """Environment reward type. Options include 'sparse' and 'dense' only."""
+
+    SPARSE = "sparse"
+    DENSE = "dense"
 
 
 class MujocoBaseEnv(ABC, gym.Env):
@@ -60,7 +68,7 @@ class MujocoBaseEnv(ABC, gym.Env):
         self,
         spec: mujoco.MjSpec,
         frame_skip: int = 20,
-        reward_type: Literal["dense", "sparse"] = "sparse",
+        reward_type: str | RewardType = "sparse",
         domain_randomizers: Sequence[DomainRandomizer] = (),
         curriculum_terms: Sequence[CurriculumTerm] = (),
         render_mode: str | None = None,
@@ -74,7 +82,7 @@ class MujocoBaseEnv(ABC, gym.Env):
         self.model = spec.compile()
         self.data = mujoco.MjData(self.model)
         self.frame_skip = frame_skip
-        self.reward_type = reward_type
+        self.reward_type = RewardType(reward_type)
         self.rng = np.random.default_rng()
         self.domain_randomizers = domain_randomizers
         self.curriculum_terms = curriculum_terms
