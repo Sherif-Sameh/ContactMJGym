@@ -245,7 +245,7 @@ class EdgeGraspEnv(MujocoBaseEnv):
 
     def compute_reward(
         self, achieved_goal: GoalType, desired_goal: GoalType, info: InfoType
-    ) -> np.float32 | FloatArray:
+    ) -> FloatArray:
         """Compute task reward for achieved and desired goals. Must support batched inputs."""
         terminated = achieved_goal[..., 5].astype(np.bool_)
         state_rew = achieved_goal[..., 4]
@@ -265,7 +265,7 @@ class EdgeGraspEnv(MujocoBaseEnv):
 
     def compute_terminated(
         self, achieved_goal: GoalType, desired_goal: GoalType, info: InfoType
-    ) -> np.bool_ | BoolArray:
+    ) -> BoolArray:
         """Compute terminated signal for acheived and desired goals. Must support batched inputs."""
         return achieved_goal[..., 5].astype(dtype=np.bool_)
 
