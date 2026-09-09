@@ -90,16 +90,9 @@ def test_step(env: gym.Env):
     assert isinstance(terminated, bool)
     assert isinstance(truncated, bool)
     assert isinstance(info, dict)
-
-    # Dense reward -> info dict contains dense state reward
-    env = make_env(reward_type="dense")
-    env.reset(seed=0)
-    _, _, _, _, info = env.step(env.action_space.sample())
-    assert isinstance(info, dict)
-    assert len(info) == 4
-    assert "state_rew" in info
-    for key, value in info.items():
-        assert np.isfinite(value), f"info key {key} is not finite"
+    assert len(info) == 1
+    assert "is_success" in info
+    assert np.isfinite(info["is_success"])
 
 
 # region Reward
@@ -110,54 +103,49 @@ def test_compute_reward_sparse():
     rng = np.random.default_rng(0)
 
     def sample_goal() -> np.ndarray:
-        goal = rng.uniform(-1.0, 1.0, size=4).astype(np.float32)
-        goal[3] = rng.integers(0, 2)
+        goal = rng.uniform(-1.0, 1.0, size=6).astype(np.float32)
+        goal[[3, 5]] = rng.integers(0, 2)
         return goal
 
     sparse_env = make_env(reward_type="sparse")
     sparse_env.reset(seed=0)
+    state_rew = -0.01
+    terminated = False
     achieved_goal = sample_goal()
-    info = {"terminated": False, "is_success": 0.0, "reg_rew": -0.01}
+    achieved_goal[4] = state_rew
+    achieved_goal[5] = float(terminated)
 
     # Achieved = desired goal -> sparse guidance term is 0
-    reward = sparse_env.unwrapped.compute_reward(achieved_goal, achieved_goal.copy(), info)
-    assert isinstance(reward, (float, np.floating))
+    reward = sparse_env.unwrapped.compute_reward(achieved_goal, achieved_goal.copy(), {})
+    assert isinstance(reward, np.ndarray)
+    assert reward.shape == ()
     assert np.isfinite(reward)
-    np.testing.assert_allclose(reward, info["reg_rew"])
+    np.testing.assert_allclose(reward, state_rew)
 
     # Achieved goal far from desired -> sparse guidance term is -1
     desired_far = achieved_goal.copy()
     desired_far[:3] += 10.0
-    reward = sparse_env.unwrapped.compute_reward(achieved_goal, desired_far, info)
-    np.testing.assert_allclose(reward, -1.0 + info["reg_rew"])
+    reward = sparse_env.unwrapped.compute_reward(achieved_goal, desired_far, {})
+    np.testing.assert_allclose(reward, -1.0 + state_rew)
 
     # Purely functional -> reward is the same for identical args before/after stepping
     sparse_env.step(sparse_env.action_space.sample())
-    reward_after_step = sparse_env.unwrapped.compute_reward(achieved_goal, desired_far, info)
+    reward_after_step = sparse_env.unwrapped.compute_reward(achieved_goal, desired_far, {})
     np.testing.assert_allclose(reward, reward_after_step)
 
     # Prepare batched inputs
     batch_size = 6
     achieved_goals = np.stack([sample_goal() for _ in range(batch_size)])
     desired_goals = np.stack([sample_goal() for _ in range(batch_size)])
-    infos = []
-    for _ in range(batch_size):
-        single_info = {
-            "terminated": bool(rng.integers(0, 2)),
-            "is_success": float(rng.integers(0, 2)),
-            "reg_rew": float(rng.uniform(-1.0, 0.0)),
-        }
-        infos.append(single_info)
-    stacked_info = {key: np.array([i[key] for i in infos]) for key in infos[0]}
 
     # Batch -> reward = reward -> batch
-    rewards = sparse_env.unwrapped.compute_reward(achieved_goals, desired_goals, stacked_info)
+    rewards = sparse_env.unwrapped.compute_reward(achieved_goals, desired_goals, {})
     assert isinstance(rewards, np.ndarray)
     assert rewards.shape == (batch_size,)
     assert np.all(np.isfinite(rewards))
     single_rewards = np.array(
         [
-            sparse_env.unwrapped.compute_reward(achieved_goals[i], desired_goals[i], infos[i])
+            sparse_env.unwrapped.compute_reward(achieved_goals[i], desired_goals[i], {})
             for i in range(batch_size)
         ]
     )
@@ -169,78 +157,82 @@ def test_compute_reward_dense():
     rng = np.random.default_rng(0)
 
     def sample_goal() -> np.ndarray:
-        goal = rng.uniform(-1.0, 1.0, size=4).astype(np.float32)
-        goal[3] = rng.integers(0, 2)
+        goal = rng.uniform(-1.0, 1.0, size=6).astype(np.float32)
+        goal[[3, 5]] = rng.integers(0, 2)
         return goal
+
+    achieved_goal = sample_goal()
+    state_rew = -0.01
+    terminated = False
+    achieved_goal[4] = state_rew
+    achieved_goal[5] = float(terminated)
 
     dense_env = make_env(reward_type="dense")
     dense_env.reset(seed=0)
     weights = dense_env.unwrapped.cfg.weights
     mdata = dense_env.unwrapped._mdata
     task_cfg = dense_env.unwrapped.cfg.task_cfg
-    info_dense = {"terminated": False, "is_success": 0.0, "reg_rew": 0.0, "state_rew": 0.0}
+    state_rew = -0.01
+    terminated = False
 
     # tgt_flag = 0 (table target) -> table term disabled regardless of object height
     achieved_table = sample_goal()
+    achieved_table[4] = state_rew
+    achieved_table[5] = float(terminated)
     desired_same = achieved_table.copy()
     desired_far = achieved_table.copy()
     desired_far[0] += 10.0
     desired_same[3] = desired_far[3] = 0.0
 
-    reward_table_same = dense_env.unwrapped.compute_reward(achieved_table, desired_same, info_dense)
-    reward_table_far = dense_env.unwrapped.compute_reward(achieved_table, desired_far, info_dense)
-    np.testing.assert_allclose(reward_table_same, 0.0, atol=1e-5)
-    np.testing.assert_allclose(reward_table_far, weights.tgt_dist * np.tanh(10.0), atol=1e-4)
+    reward_table_same = dense_env.unwrapped.compute_reward(achieved_table, desired_same, {})
+    reward_table_far = dense_env.unwrapped.compute_reward(achieved_table, desired_far, {})
+    np.testing.assert_allclose(reward_table_same, state_rew, atol=1e-5)
+    np.testing.assert_allclose(
+        reward_table_far, weights.tgt_dist * -np.tanh(10.0) + state_rew, atol=1e-4
+    )
 
     # tgt_flag = 1 and object on the table -> target term forced to 1 and table term active
     table_pos = dense_env.unwrapped.data.xpos[mdata.table_body_id]
     achieved_lift = np.array(
-        [table_pos[0] + 0.05, table_pos[1], mdata.table_height, 0.0], dtype=np.float32
+        [table_pos[0] + 0.05, table_pos[1], mdata.table_height, 0.0, state_rew, 0.0],
+        dtype=np.float32,
     )
     desired_lift = np.array(
-        [achieved_lift[0], achieved_lift[1], achieved_lift[2] + 0.2, 1.0], dtype=np.float32
+        [achieved_lift[0], achieved_lift[1], achieved_lift[2] + 0.2, 1.0, 0.0, 0.0],
+        dtype=np.float32,
     )
-    reward_lift = dense_env.unwrapped.compute_reward(achieved_lift, desired_lift, info_dense)
+    reward_lift = dense_env.unwrapped.compute_reward(achieved_lift, desired_lift, {})
 
     obj_dist = np.sqrt(np.sum((achieved_lift[:2] - table_pos[:2]) ** 2)) / mdata.table_extent
     expected_tbl_rew = np.tanh(task_cfg.dist_mult * obj_dist) - 1
-    expected_reward = weights.tgt_dist * 1.0 + weights.tbl_dist * expected_tbl_rew
+    expected_reward = weights.tgt_dist * -1.0 + weights.tbl_dist * expected_tbl_rew + state_rew
     np.testing.assert_allclose(reward_lift, expected_reward, atol=1e-5)
 
     # tgt_flag = 1 and object off the table -> target term active and table term forced to 0
     achieved_lift = np.array(
-        [table_pos[0] + 0.05, table_pos[1], mdata.table_height + 0.05, 1.0], dtype=np.float32
+        [table_pos[0] + 0.05, table_pos[1], mdata.table_height + 0.05, 1.0, state_rew, 0.0],
+        dtype=np.float32,
     )
-    reward_lift = dense_env.unwrapped.compute_reward(achieved_lift, desired_lift, info_dense)
+    reward_lift = dense_env.unwrapped.compute_reward(achieved_lift, desired_lift, {})
 
     tgt_dist = np.sqrt(np.sum((achieved_lift[:3] - desired_lift[:3]) ** 2))
-    expected_tgt_rew = np.tanh(tgt_dist)
-    expected_reward = weights.tgt_dist * expected_tgt_rew
+    expected_tgt_rew = -np.tanh(tgt_dist)
+    expected_reward = weights.tgt_dist * expected_tgt_rew + state_rew
     np.testing.assert_allclose(reward_lift, expected_reward, atol=1e-5)
 
     # Prepare batched inputs
     batch_size = 6
     achieved_goals = np.stack([sample_goal() for _ in range(batch_size)])
     desired_goals = np.stack([sample_goal() for _ in range(batch_size)])
-    infos = []
-    for _ in range(batch_size):
-        single_info = {
-            "terminated": bool(rng.integers(0, 2)),
-            "is_success": float(rng.integers(0, 2)),
-            "reg_rew": float(rng.uniform(-1.0, 0.0)),
-            "state_rew": float(rng.uniform(-1.0, 0.0)),
-        }
-        infos.append(single_info)
-    stacked_info = {key: np.array([i[key] for i in infos]) for key in infos[0]}
 
     # Batch -> reward = reward -> batch
-    rewards = dense_env.unwrapped.compute_reward(achieved_goals, desired_goals, stacked_info)
+    rewards = dense_env.unwrapped.compute_reward(achieved_goals, desired_goals, {})
     assert isinstance(rewards, np.ndarray)
     assert rewards.shape == (batch_size,)
     assert np.all(np.isfinite(rewards))
     single_rewards = np.array(
         [
-            dense_env.unwrapped.compute_reward(achieved_goals[i], desired_goals[i], infos[i])
+            dense_env.unwrapped.compute_reward(achieved_goals[i], desired_goals[i], {})
             for i in range(batch_size)
         ]
     )
@@ -256,47 +248,38 @@ def test_compute_terminated(env: gym.Env):
     env.reset(seed=0)
 
     def sample_goal() -> np.ndarray:
-        return rng.uniform(-1.0, 1.0, size=4).astype(np.float32)
+        goal = rng.uniform(-1.0, 1.0, size=6).astype(np.float32)
+        goal[[3, 5]] = rng.integers(0, 2)
+        return goal
 
     # Test terminated is goal-independent
     achieved_goal, desired_goal = sample_goal(), sample_goal()
     for terminated in (True, False):
-        info = {"terminated": terminated, "is_success": 0.0, "reg_rew": 0.0}
-        result = env.unwrapped.compute_terminated(achieved_goal, desired_goal, info)
-        assert isinstance(result, (bool, np.bool_))
+        achieved_goal[5] = float(terminated)
+        result = env.unwrapped.compute_terminated(achieved_goal, desired_goal, {})
+        assert isinstance(result, np.ndarray)
         assert bool(result) == terminated
 
     # Purely functional -> terminated is the same for identical args before/after stepping
     env.step(env.action_space.sample())
     other_goal = sample_goal()
-    info = {"terminated": True, "is_success": 0.0, "reg_rew": 0.0}
-    result_other_goal = env.unwrapped.compute_terminated(other_goal, other_goal, info)
+    other_goal[5] = float(True)
+    result_other_goal = env.unwrapped.compute_terminated(other_goal, other_goal, {})
     assert bool(result_other_goal) is True
 
     # Prepare batched inputs
     batch_size = 6
     achieved_goals = np.stack([sample_goal() for _ in range(batch_size)])
     desired_goals = np.stack([sample_goal() for _ in range(batch_size)])
-    terminated_batch = rng.integers(0, 2, size=batch_size).astype(bool)
-    info_batch = {
-        "terminated": terminated_batch,
-        "is_success": np.zeros(batch_size),
-        "reg_rew": np.zeros(batch_size),
-    }
-
-    result_batch = env.unwrapped.compute_terminated(achieved_goals, desired_goals, info_batch)
-    assert isinstance(result_batch, np.ndarray)
-    assert result_batch.shape == (batch_size,)
-    np.testing.assert_array_equal(result_batch, terminated_batch)
 
     # Batch -> reward = reward -> batch
+    result_batch = env.unwrapped.compute_terminated(achieved_goals, desired_goals, {})
+    assert isinstance(result_batch, np.ndarray)
+    assert result_batch.shape == (batch_size,)
+    np.testing.assert_array_equal(result_batch, achieved_goals[:, 5].astype(np.bool_))
     single_results = np.array(
         [
-            env.unwrapped.compute_terminated(
-                achieved_goals[i],
-                desired_goals[i],
-                {"terminated": terminated_batch[i], "is_success": 0.0, "reg_rew": 0.0},
-            )
+            env.unwrapped.compute_terminated(achieved_goals[i], desired_goals[i], {})
             for i in range(batch_size)
         ]
     )
