@@ -19,6 +19,11 @@ from examples.sb3.common.callbacks import (
     HParamCallback,
     RolloutWithStatsCallback,
 )
+from examples.sb3.common.demo_utils import (
+    load_episodes,
+    preload_replay_buffer,
+    warm_start_vecnormalize,
+)
 from examples.sb3.common.env_utils import make_vec_env, wrap_vec_normalize
 from examples.sb3.sac.config import SACExperimentCfg
 
@@ -97,6 +102,17 @@ def train(config: str) -> None:
         seed=algo_cfg.seed,
         device=algo_cfg.device,
         tensorboard_log=str(run_dir),
+        verbose=cfg.logging.verbose,
+    )
+
+    # Pre-load replay buffer and VecNormalize from demos if given
+    episodes = load_episodes(cfg.demo.paths)
+    warm_start_vecnormalize(train_env, episodes, verbose=cfg.logging.verbose)
+    preload_replay_buffer(
+        model.replay_buffer,
+        episodes,
+        n_envs=model.n_envs,
+        max_transitions=cfg.demo.max_transitions,
         verbose=cfg.logging.verbose,
     )
 
