@@ -81,18 +81,23 @@ def main(
         render_mode="human",
         **kwargs,
     )
-    if action_nstack > 0:
-        env = ActionHistoryWrapper(env, n_stack=action_nstack)
     assert controller in ALL_CONTROLLERS
     controller_cfg = CONTROLLER_TO_CFG_CLS[controller](comp_cfg=CompensationCfg(bias_mult=1))
     env: gym.Env = CONTROLLER_TO_CLS[controller](env, controller_cfg)
+    if action_nstack > 0:
+        env = ActionHistoryWrapper(env, n_stack=action_nstack)
     unwrapped = env.unwrapped
     assert hasattr(unwrapped, "viewer_is_running"), (
         "Environment does not have a viewer_is_running property."
     )
 
     obs, _ = env.reset(seed=seed)
-    teleop = Keyboard(env, gripper_step=gripper_step, speed_init=speed_init, speed_step=speed_step)
+    teleop = Keyboard(
+        env.env if action_nstack > 0 else env,
+        gripper_step=gripper_step,
+        speed_init=speed_init,
+        speed_step=speed_step,
+    )
     teleop.print_controls()
     print("\nCollecting demonstrations.")
     print("Ctrl+C at any time to stop and save what's been collected so far.\n")
