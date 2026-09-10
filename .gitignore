@@ -437,3 +437,6 @@ FodyWeavers.xsd
 
 # training runs
 **/runs
+
+# demonstrations
+**/demos

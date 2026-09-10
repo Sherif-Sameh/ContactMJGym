@@ -1,7 +1,9 @@
 import time
+from typing import Any
 
 import fire
 import gymnasium as gym
+from _demo_helpers import EpisodeBuffer, get_object_state_randomizer, save_demos
 
 import contact_gym  # noqa: F401
 from contact_gym.envs import EdgeGraspEnvCfg
@@ -12,6 +14,7 @@ from contact_gym.wrappers.controllers import (
     CONTROLLER_TO_CLS,
 )
 from contact_gym.wrappers.controllers.task_space import TaskSpaceControllerCfg
+from contact_gym.wrappers.observation import ActionHistoryWrapper
 
 SceneCfg = EdgeGraspEnvCfg.SceneCfg
 CompensationCfg = TaskSpaceControllerCfg.CompensationCfg
@@ -25,6 +28,8 @@ INTERNAL_ENV_IDS = [
 
 def main(
     env_name: str,
+    output_path: str | None = None,
+    action_nstack: int = 1,
     gripper_step: float = 0.2,
     speed_init: float = 0.3,
     speed_step: float = 0.1,
@@ -37,6 +42,10 @@ def main(
 
     Args:
         env_name: Registered gymnasium environment ID (e.g., "EdgeGrasp-v0").
+        output_path: Path to write the resulting pickle file. If None, defaults to
+            demos/{env_name}_teleop.pkl. Default value is None.
+        action_nstack: Number of previous actions to add to observation vector through
+            the ActionHistoryWrapper. Default value is 1.
         gripper_step: Gripper position step per env `step()` call. Default value is 0.2.
         speed_init: Initial value for speed scale factor. Default value is 0.5.
         speed_step: Speed step size for each "speed_up" or "speed_down" key press.
@@ -47,22 +56,33 @@ def main(
         scene_kwargs: Optional kwargs for scene configuration (e.g.,'{"robot": "fr3"}' ). 
 
     Usage:
-        python simple_agent.py --env_name "EdgeGrasp-v0"
+        python keyboard_teleop.py --env_name "EdgeGrasp-v0"
 
-        python simple_agent.py \
+        python keyboard_teleop.py \
             --env_name "EdgeGrasp-v0" \
-            --act_scale 0.05 \
-            --seed 0 \
+            --action_nstack 1 \
+            --gripper_step 0.3 \
+            --speed_init 0.1 \
+            --speed_step 0.1 \
             --controller mocap \
+            --seed 0 \
             --kwargs '{"frame_skip": 20}' \
             --scene_kwargs '{"robot": "fr3"}'
     """
     assert env_name in INTERNAL_ENV_IDS
-    env_name = f"contact_gym/{env_name}"
+    env_id = f"contact_gym/{env_name}"
     kwargs = kwargs if kwargs else {}
     scene_kwargs = scene_kwargs if scene_kwargs else {}
     cfg = EdgeGraspEnvCfg(scene_cfg=SceneCfg(**scene_kwargs))
-    env = gym.make(env_name, cfg=cfg, render_mode="human", **kwargs)
+    env = gym.make(
+        env_id,
+        cfg=cfg,
+        domain_randomizers=[get_object_state_randomizer()],
+        render_mode="human",
+        **kwargs,
+    )
+    if action_nstack > 0:
+        env = ActionHistoryWrapper(env, n_stack=action_nstack)
     assert controller in ALL_CONTROLLERS
     controller_cfg = CONTROLLER_TO_CFG_CLS[controller](comp_cfg=CompensationCfg(bias_mult=1))
     env: gym.Env = CONTROLLER_TO_CLS[controller](env, controller_cfg)
@@ -70,37 +90,72 @@ def main(
     assert hasattr(unwrapped, "viewer_is_running"), (
         "Environment does not have a viewer_is_running property."
     )
-    env.reset(seed=seed)
+
+    obs, _ = env.reset(seed=seed)
     teleop = Keyboard(env, gripper_step=gripper_step, speed_init=speed_init, speed_step=speed_step)
     teleop.print_controls()
+    print("\nCollecting demonstrations.")
+    print("Ctrl+C at any time to stop and save what's been collected so far.\n")
 
+    successful_episodes: list[dict[str, Any]] = []
+    ep_buffer = EpisodeBuffer()
     last_reward = None
     last_status = ""
     frame_dt = 1 / unwrapped.metadata["render_fps"]
     next_frame = time.perf_counter()
-    while unwrapped.viewer_is_running:
-        # Get and apply action
-        action = teleop.get_action()
-        _, reward, terminated, truncated, _ = env.step(action)
-        if terminated or truncated:
-            env.reset()
-            teleop.reset()
-        # Print updated reward and teleop status
-        reward = round(reward, ndigits=3)
-        status = teleop.get_status_str()
-        if reward != last_reward or status != last_status:
-            print("\r" + f"reward: {reward:.3f} " + status + " " * 10, end="", flush=True)
-            last_reward = reward
-            last_status = status
-        # Rate limit loop
-        next_frame += frame_dt
-        sleep_time = next_frame - time.perf_counter()
-        if sleep_time > 0:
-            time.sleep(sleep_time)
-        else:
-            next_frame = time.perf_counter()
-    env.close()
-    teleop.close()
+    try:
+        while unwrapped.viewer_is_running:
+            # Get and apply action
+            action = teleop.get_action()
+            next_obs, reward, terminated, truncated, info = env.step(action)
+            ep_buffer.add(obs, next_obs, action, reward, terminated, truncated, info)
+            obs = next_obs
+            if terminated or truncated:
+                is_success = bool(info.get("is_success", False))
+                if is_success:
+                    successful_episodes.append(ep_buffer.to_episode_dict())
+                env.reset()
+                teleop.reset()
+                ep_buffer.reset()
+            # Print updated status
+            reward = round(reward, ndigits=3)
+            status = teleop.get_status_str()
+            if reward != last_reward or status != last_status:
+                print(
+                    "\r"
+                    + f"succ. episodes: {len(successful_episodes)} | "
+                    + f"reward: {reward:.3f} | "
+                    + status
+                    + " " * 10,
+                    end="",
+                    flush=True,
+                )
+                last_reward = reward
+                last_status = status
+            # Rate limit loop
+            next_frame += frame_dt
+            sleep_time = next_frame - time.perf_counter()
+            if sleep_time > 0:
+                time.sleep(sleep_time)
+            else:
+                next_frame = time.perf_counter()
+    except KeyboardInterrupt:
+        print("\nInterrupted by user, saving whatever was collected so far.")
+    finally:
+        env.close()
+        teleop.close()
+
+    if not successful_episodes:
+        print("No successful episodes collected; nothing to save.")
+        exit()
+
+    output_path = f"demos/{env_name}_teleop.pkl" if output_path is None else output_path
+    save_demos(
+        successful_episodes,
+        output_path,
+        env_name=env_name,
+        extra_meta={"controller": controller, "kwargs": kwargs, "scene_kwargs": scene_kwargs},
+    )
 
 
 if __name__ == "__main__":
