@@ -105,6 +105,14 @@ class LoggingCfg:
 
 
 @dataclass
+class DemoCfg:
+    """Demonstration warm-up configuration."""
+
+    paths: list[str] = field(default_factory=list)
+    max_transitions: int | None = None
+
+
+@dataclass
 class TrainingCfg:
     """Model training configuration."""
 

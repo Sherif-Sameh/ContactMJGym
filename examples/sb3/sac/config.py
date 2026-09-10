@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
-from examples.sb3.common.config import EnvCfg, HERCfg, LoggingCfg, TrainingCfg
+from examples.sb3.common.config import DemoCfg, EnvCfg, HERCfg, LoggingCfg, TrainingCfg
 
 
 @dataclass
@@ -38,4 +38,5 @@ class SACExperimentCfg:
     algorithm: SACAlgorithmCfg
     logging: LoggingCfg = field(default_factory=LoggingCfg)
     her: HERCfg = field(default_factory=HERCfg)
+    demo: DemoCfg = field(default_factory=DemoCfg)
     training: TrainingCfg = field(default_factory=TrainingCfg)
