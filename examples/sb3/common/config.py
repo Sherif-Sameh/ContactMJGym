@@ -110,6 +110,7 @@ class DemoCfg:
 
     paths: list[str] = field(default_factory=list)
     max_transitions: int | None = None
+    gradient_steps: int = 100
 
 
 @dataclass

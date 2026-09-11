@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, TypeAlias
 
 import numpy as np
+import torch.nn.functional as F
 from stable_baselines3.common.vec_env import VecNormalize
 
 if TYPE_CHECKING:
@@ -15,6 +16,8 @@ if TYPE_CHECKING:
     from stable_baselines3.common.buffers import DictReplayBuffer
     from stable_baselines3.common.vec_env import VecEnv
     from stable_baselines3.her import HerReplayBuffer
+    from stable_baselines3.sac import SAC
+    from stable_baselines3.td3 import TD3
 
     from contact_gym.envs.mujoco_base import ActType, InfoType, ObsType
 
@@ -147,6 +150,54 @@ def warm_start_vecnormalize(
             f"Warm-started VecNormalize from {len(episodes)} demo episodes "
             f"(gamma={gamma}, norm_reward={vec_normalize.norm_reward})."
         )
+
+
+def behavior_clone_td3(
+    model: TD3,
+    vec_normalize: VecEnv | VecNormalize,
+    gradient_steps: int = 1000,
+    batch_size: int = 256,
+) -> float | None:
+    """Behavior clone a TD3 policy from demos preloaded into the replay buffer."""
+    if not model.replay_buffer.size():
+        return None
+    actor = model.actor
+    actor.train()
+    env = None if not isinstance(vec_normalize, VecNormalize) else vec_normalize
+    for _ in range(gradient_steps):
+        sample = model.replay_buffer.sample(batch_size, env)
+        observations, actions = sample.observations, sample.actions
+        pred_actions = actor(observations)
+        loss = F.mse_loss(pred_actions, actions)
+        actor.optimizer.zero_grad()
+        loss.backward()
+        actor.optimizer.step()
+    return loss.detach().item()
+
+
+def behavior_clone_sac(
+    model: SAC,
+    vec_normalize: VecEnv | VecNormalize,
+    gradient_steps: int = 1000,
+    batch_size: int = 256,
+) -> float | None:
+    """Behavior clone a SAC policy from demos preloaded into the replay buffer."""
+    if not model.replay_buffer.size():
+        return None
+    actor = model.actor
+    actor.train()
+    env = None if not isinstance(vec_normalize, VecNormalize) else vec_normalize
+    for _ in range(gradient_steps):
+        sample = model.replay_buffer.sample(batch_size, env)
+        observations, actions = sample.observations, sample.actions
+        mean, log_std, kwargs = actor.get_action_dist_params(observations)
+        dist = actor.action_dist.proba_distribution(mean, log_std, **kwargs)
+        log_prob = dist.log_prob(actions)
+        loss = -log_prob.mean()
+        actor.optimizer.zero_grad()
+        loss.backward()
+        actor.optimizer.step()
+    return loss.detach().item()
 
 
 # region Helpers
