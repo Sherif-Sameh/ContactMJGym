@@ -11,6 +11,7 @@ from stable_baselines3.common.vec_env import VecEnv, VecNormalize
 from stable_baselines3.her import HerReplayBuffer
 
 import contact_gym  # noqa: F401
+import examples.sb3.common.demo_utils as demo_utils
 from contact_gym.curriculum.fixed import FixedCurriculumTerm
 from examples.common.config_utils import dict_to_dataclass
 from examples.sb3.common.algos import TD3WithNoiseModel
@@ -18,11 +19,6 @@ from examples.sb3.common.callbacks import (
     EvalWithStatsCallback,
     HParamCallback,
     RolloutWithStatsCallback,
-)
-from examples.sb3.common.demo_utils import (
-    load_episodes,
-    preload_replay_buffer,
-    warm_start_vecnormalize,
 )
 from examples.sb3.common.env_utils import make_vec_env, wrap_vec_normalize
 from examples.sb3.td3.config import TD3ExperimentCfg
@@ -106,15 +102,20 @@ def train(config: str) -> None:
     )
 
     # Pre-load replay buffer and VecNormalize from demos if given
-    episodes = load_episodes(cfg.demo.paths)
-    warm_start_vecnormalize(train_env, episodes, verbose=cfg.logging.verbose)
-    preload_replay_buffer(
+    episodes = demo_utils.load_episodes(cfg.demo.paths)
+    demo_utils.warm_start_vecnormalize(train_env, episodes, verbose=cfg.logging.verbose)
+    demo_utils.preload_replay_buffer(
         model.replay_buffer,
         episodes,
         n_envs=model.n_envs,
         max_transitions=cfg.demo.max_transitions,
         verbose=cfg.logging.verbose,
     )
+    bc_loss_final = demo_utils.behavior_clone_td3(
+        model, train_env, gradient_steps=cfg.demo.gradient_steps, batch_size=algo_cfg.batch_size
+    )
+    if bc_loss_final is not None:
+        print(f"Final BC loss after {cfg.demo.gradient_steps} steps: {bc_loss_final:.4f}")
 
     # SB3 callbacks count vectorized steps, so freqs given in the config as
     # total env step need dividing by n_envs
