@@ -114,6 +114,7 @@ def test_compute_reward_sparse():
     achieved_goal = sample_goal()
     achieved_goal[4] = state_rew
     achieved_goal[5] = float(terminated)
+    tgt_dist = sparse_env.unwrapped.cfg.weights.tgt_dist
 
     # Achieved = desired goal -> sparse guidance term is 0
     reward = sparse_env.unwrapped.compute_reward(achieved_goal, achieved_goal.copy(), {})
@@ -122,11 +123,11 @@ def test_compute_reward_sparse():
     assert np.isfinite(reward)
     np.testing.assert_allclose(reward, state_rew)
 
-    # Achieved goal far from desired -> sparse guidance term is -1
+    # Achieved goal far from desired -> sparse guidance term is -tgt_dist
     desired_far = achieved_goal.copy()
     desired_far[:3] += 10.0
     reward = sparse_env.unwrapped.compute_reward(achieved_goal, desired_far, {})
-    np.testing.assert_allclose(reward, -1.0 + state_rew)
+    np.testing.assert_allclose(reward, -tgt_dist + state_rew)
 
     # Purely functional -> reward is the same for identical args before/after stepping
     sparse_env.step(sparse_env.action_space.sample())
