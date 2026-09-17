@@ -70,9 +70,9 @@ class EdgeGraspEnvCfg:
         """Termination is triggered if object falls below the table by more than
         `fall_tol`. Defautl value is 0.05."""
 
-        dist_mult: float = 2.5
+        dist_mult: float = 1.5
         """Multiplier for object-table distance before applying tanh() for dense reward.
-        Default value is 2.5."""
+        Default value is 1.5."""
 
     task_cfg: TaskCfg = field(default_factory=TaskCfg)
 
@@ -86,11 +86,11 @@ class EdgeGraspEnvCfg:
         tbl_dist: float = 0.2
         """Weight for the object-table center distance reward term. Default value is 0.2."""
 
-        tcp_dist: float = 0.05
-        """Weight for the tcp-object distance reward term. Default value is 0.05."""
+        tcp_dist: float = 0.0
+        """Weight for the tcp-object distance reward term. Default value is 0."""
 
-        con: float = 0.01
-        """Weight for the gripper-object contact reward term. Default value is 0.01."""
+        con: float = 0.0
+        """Weight for the gripper-object contact reward term. Default value is 0."""
 
         con_frc_l2: float = 1e-4
         """Weight for the contact force L2 norm reward term. Default vaule is 1e-4."""
@@ -251,7 +251,9 @@ class EdgeGraspEnv(MujocoBaseEnv):
         state_rew = achieved_goal[..., 4]
         tgt_dist = self._norm(achieved_goal[..., :3] - desired_goal[..., :3])
         if self.reward_type is RewardType.SPARSE:
-            guidance_rew = -(tgt_dist > self.cfg.task_cfg.goal_tol).astype(np.float32)
+            guidance_rew = -self.cfg.weights.tgt_dist * (
+                tgt_dist > self.cfg.task_cfg.goal_tol
+            ).astype(np.float32)
         else:
             tgt_flag = desired_goal[..., 3]
             obj_height_raw = achieved_goal[..., 2] - self._mdata.table_height
@@ -499,4 +501,4 @@ class EdgeGraspEnv(MujocoBaseEnv):
 
     def _is_success(self, achieved_goal: GoalType, desired_goal: GoalType) -> float:
         """Get task success status."""
-        return float(self._norm(achieved_goal - desired_goal) < self.cfg.task_cfg.goal_tol)
+        return float(self._norm(achieved_goal[:3] - desired_goal[:3]) < self.cfg.task_cfg.goal_tol)
