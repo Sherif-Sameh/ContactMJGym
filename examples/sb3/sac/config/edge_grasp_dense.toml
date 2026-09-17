@@ -1,0 +1,205 @@
+# SAC on EdgeGrasp-v0 with dense rewards
+# All goals set on the table only (high_goal_prob = 0)
+
+name = "sac_edge_grasp_dense"
+
+[train_env]
+env_id = "contact_gym/EdgeGrasp-v0"
+n_envs = 8
+vec_env_type = "subproc"
+seed = 0
+
+[train_env.env_kwargs]
+frame_skip = 20
+reward_type = "dense"
+max_episode_steps = 100
+
+[train_env.env_kwargs.cfg]
+class = "contact_gym.envs.edge_grasp.EdgeGraspEnvCfg"
+kwargs.scene_cfg.class = "contact_gym.envs.edge_grasp.EdgeGraspEnvCfg.SceneCfg"
+kwargs.scene_cfg.kwargs.robot = "panda"
+kwargs.scene_cfg.kwargs.gripper = "panda_hand"
+kwargs.scene_cfg.kwargs.object = "block"
+kwargs.task_cfg.class = "contact_gym.envs.edge_grasp.EdgeGraspEnvCfg.TaskCfg"
+kwargs.task_cfg.kwargs.high_goal_prob = 0.0
+kwargs.weights.class = "contact_gym.envs.edge_grasp.EdgeGraspEnvCfg.Weights"
+kwargs.weights.kwargs.tcp_dist = 0.05
+kwargs.weights.kwargs.con = 0.01
+
+[[train_env.env_kwargs.domain_randomizers]] # joint position randomization
+class = "contact_gym.dr.DataStateRandomizer"
+
+[train_env.env_kwargs.domain_randomizers.kwargs.cfg]
+class = "contact_gym.dr.state.qpos_state_cfg"
+kwargs.entry_sel = [0, 1, 2, 3, 4, 5, 6]
+kwargs.noise.class = "contact_gym.utils.noise.Noise"
+kwargs.noise.kwargs.operation = "add"
+kwargs.noise.kwargs.sampler.class = "contact_gym.utils.noise.GaussianSampler"
+kwargs.noise.kwargs.sampler.kwargs.mean = 0.0
+kwargs.noise.kwargs.sampler.kwargs.std = 0.1
+
+[[train_env.env_kwargs.domain_randomizers]] # object pose randomization
+class = "contact_gym.dr.DataStateRandomizer"
+
+[train_env.env_kwargs.domain_randomizers.kwargs.cfg]
+class = "contact_gym.dr.state.qpos_state_cfg"
+kwargs.entry_sel = [9, 10, 11, 12, 13, 14, 15]
+kwargs.noise.class = "contact_gym.utils.noise.Noise"
+kwargs.noise.kwargs.operation = "add_se3"
+kwargs.noise.kwargs.scalar_first = true
+kwargs.noise.kwargs.sampler.class = "contact_gym.utils.noise.GaussianSampler"
+kwargs.noise.kwargs.sampler.kwargs.mean = 0.0
+kwargs.noise.kwargs.sampler.kwargs.std = [0.1, 0.1, 0.0, 0.0, 0.0, 0.4]
+
+[[train_env.env_kwargs.curriculum_terms]]
+class = "contact_gym.curriculum.fixed.CosineAnnealingCurriculumTerm"
+kwargs.paths = ["cfg.weights.fail"]
+kwargs.end = [3.0]
+kwargs.end_step = 4_000_000
+kwargs.start = [1.0]
+
+[train_env.tscontroller]
+enabled = true
+controller = "mocap"
+
+[train_env.tscontroller.mocap_cfg]
+eq_solimp = [0.9, 0.95, 0.01, 0.5, 2.0]
+eq_solref = [0.02, 1.1]
+null_project = true
+comp_cfg.bias_mult = 1.0
+param_cfg.kp = [500.0, 500.0, 500.0, 500.0, 250.0, 250.0, 250.0]
+param_cfg.damping = 1.0
+
+[train_env.actionhistory]
+enabled = true
+n_stack = 1
+
+[train_env.vecnormalize]
+enabled = true
+norm_obs = true
+norm_reward = false
+clip_obs = 10.0
+clip_reward = 10.0
+gamma = 0.95
+
+[eval_env]
+env_id = "contact_gym/EdgeGrasp-v0"
+n_envs = 4
+vec_env_type = "dummy"
+seed = 1_000
+
+[eval_env.env_kwargs]
+frame_skip = 20
+reward_type = "dense"
+max_episode_steps = 100
+
+[eval_env.env_kwargs.cfg]
+class = "contact_gym.envs.edge_grasp.EdgeGraspEnvCfg"
+kwargs.scene_cfg.class = "contact_gym.envs.edge_grasp.EdgeGraspEnvCfg.SceneCfg"
+kwargs.scene_cfg.kwargs.robot = "panda"
+kwargs.scene_cfg.kwargs.gripper = "panda_hand"
+kwargs.scene_cfg.kwargs.object = "block"
+kwargs.task_cfg.class = "contact_gym.envs.edge_grasp.EdgeGraspEnvCfg.TaskCfg"
+kwargs.task_cfg.kwargs.high_goal_prob = 0.0
+
+[[eval_env.env_kwargs.domain_randomizers]] # joint position randomization
+class = "contact_gym.dr.DataStateRandomizer"
+
+[eval_env.env_kwargs.domain_randomizers.kwargs.cfg]
+class = "contact_gym.dr.state.qpos_state_cfg"
+kwargs.entry_sel = [0, 1, 2, 3, 4, 5, 6]
+kwargs.noise.class = "contact_gym.utils.noise.Noise"
+kwargs.noise.kwargs.operation = "add"
+kwargs.noise.kwargs.sampler.class = "contact_gym.utils.noise.GaussianSampler"
+kwargs.noise.kwargs.sampler.kwargs.mean = 0.0
+kwargs.noise.kwargs.sampler.kwargs.std = 0.1
+
+[[eval_env.env_kwargs.domain_randomizers]] # object pose randomization
+class = "contact_gym.dr.DataStateRandomizer"
+
+[eval_env.env_kwargs.domain_randomizers.kwargs.cfg]
+class = "contact_gym.dr.state.qpos_state_cfg"
+kwargs.entry_sel = [9, 10, 11, 12, 13, 14, 15]
+kwargs.noise.class = "contact_gym.utils.noise.Noise"
+kwargs.noise.kwargs.operation = "add_se3"
+kwargs.noise.kwargs.scalar_first = true
+kwargs.noise.kwargs.sampler.class = "contact_gym.utils.noise.GaussianSampler"
+kwargs.noise.kwargs.sampler.kwargs.mean = 0.0
+kwargs.noise.kwargs.sampler.kwargs.std = [0.1, 0.1, 0.0, 0.0, 0.0, 0.4]
+
+[eval_env.tscontroller]
+enabled = true
+controller = "mocap"
+
+[eval_env.tscontroller.mocap_cfg]
+eq_solimp = [0.9, 0.95, 0.01, 0.5, 2.0]
+eq_solref = [0.02, 1.1]
+null_project = true
+comp_cfg.bias_mult = 1.0
+param_cfg.kp = [500.0, 500.0, 500.0, 500.0, 250.0, 250.0, 250.0]
+param_cfg.damping = 1.0
+
+[eval_env.actionhistory]
+enabled = true
+n_stack = 1
+
+[eval_env.vecnormalize]
+enabled = true
+norm_obs = true
+norm_reward = false
+clip_obs = 10.0
+gamma = 0.95
+
+[algorithm]
+policy = "MultiInputPolicy"
+learning_rate = 1e-3
+buffer_size = 1_000_000
+learning_starts = 10_000
+batch_size = 256
+tau = 0.01
+gamma = 0.95
+train_freq = 25
+gradient_steps = 25
+ent_coef = "auto"
+target_update_interval = 1
+target_entropy = "auto"
+seed = 0
+device = "auto"
+
+[algorithm.action_noise]
+class = "contact_gym.utils.noise.MixtureNoise"
+
+[algorithm.action_noise.kwargs]
+probabilities = [0.2, 0.8]
+
+[[algorithm.action_noise.kwargs.noise_models]]
+class = "contact_gym.utils.noise.Noise"
+kwargs.operation = "abs"
+kwargs.sampler.class = "contact_gym.utils.noise.UniformSampler"
+kwargs.sampler.kwargs.min = -1.0
+kwargs.sampler.kwargs.max = 1.0
+
+[[algorithm.action_noise.kwargs.noise_models]]
+class = "contact_gym.utils.noise.Noise"
+kwargs.operation = "add"
+kwargs.sampler.class = "contact_gym.utils.noise.ConstantSampler"
+kwargs.sampler.kwargs.value = 0.0
+
+[algorithm.policy_kwargs]
+net_arch = [256, 256, 256]
+
+[logging]
+tensorboard_log = "runs/contact_gym"
+hparam_metrics = ["eval/ep_rew_mean", "eval/success_rate_mean"]
+log_interval = 128
+eval_freq = 100_000
+n_eval_episodes = 20
+save_freq = 500_000
+verbose = 1
+
+[her]
+enabled = false
+
+[training]
+total_timesteps = 4_000_000
+progress_bar = true
