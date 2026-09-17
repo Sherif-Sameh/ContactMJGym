@@ -1,5 +1,4 @@
 # TD3 on EdgeGrasp-v0 with dense rewards
-# All goals set on the table only (high_goal_prob = 0)
 
 name = "td3_edge_grasp_dense"
 
@@ -19,10 +18,10 @@ class = "contact_gym.envs.edge_grasp.EdgeGraspEnvCfg"
 kwargs.scene_cfg.class = "contact_gym.envs.edge_grasp.EdgeGraspEnvCfg.SceneCfg"
 kwargs.scene_cfg.kwargs.robot = "panda"
 kwargs.scene_cfg.kwargs.gripper = "panda_hand"
-kwargs.scene_cfg.kwargs.object = "block"
-kwargs.task_cfg.class = "contact_gym.envs.edge_grasp.EdgeGraspEnvCfg.TaskCfg"
-kwargs.task_cfg.kwargs.high_goal_prob = 0.0
-
+kwargs.scene_cfg.kwargs.object = "puck"
+kwargs.weights.class = "contact_gym.envs.edge_grasp.EdgeGraspEnvCfg.Weights"
+kwargs.weights.kwargs.tcp_dist = 0.05
+kwargs.weights.kwargs.con = 0.01
 
 [[train_env.env_kwargs.domain_randomizers]] # joint position randomization
 class = "contact_gym.dr.DataStateRandomizer"
@@ -47,18 +46,24 @@ kwargs.noise.kwargs.operation = "add_se3"
 kwargs.noise.kwargs.scalar_first = true
 kwargs.noise.kwargs.sampler.class = "contact_gym.utils.noise.GaussianSampler"
 kwargs.noise.kwargs.sampler.kwargs.mean = 0.0
-kwargs.noise.kwargs.sampler.kwargs.std = [0.05, 0.05, 0.0, 0.0, 0.0, 0.2]
+kwargs.noise.kwargs.sampler.kwargs.std = [0.1, 0.1, 0.0, 0.0, 0.0, 0.4]
+
+[[train_env.env_kwargs.curriculum_terms]]
+class = "contact_gym.curriculum.fixed.CosineAnnealingCurriculumTerm"
+kwargs.paths = ["cfg.task_cfg.high_goal_prob"]
+kwargs.end = [0.25]
+kwargs.end_step = 4_000_000
+kwargs.start = [0.0]
 
 [train_env.tscontroller]
 enabled = true
-controller = "mocap"
+controller = "mink"
 
-[train_env.tscontroller.mocap_cfg]
-eq_solimp = [0.9, 0.95, 0.01, 0.5, 2.0]
-eq_solref = [0.02, 1.4]
+[train_env.tscontroller.mink_cfg]
 comp_cfg.bias_mult = 1.0
-param_cfg.kp = [100.0, 100.0, 100.0, 100.0, 50.0, 50.0, 50.0]
+param_cfg.kp = [1000.0, 1000.0, 1000.0, 1000.0, 500.0, 500.0, 500.0]
 param_cfg.damping = 1.0
+mink_cfg.posture_task_cfg.cost = 0.01
 
 [train_env.actionhistory]
 enabled = true
@@ -88,9 +93,7 @@ class = "contact_gym.envs.edge_grasp.EdgeGraspEnvCfg"
 kwargs.scene_cfg.class = "contact_gym.envs.edge_grasp.EdgeGraspEnvCfg.SceneCfg"
 kwargs.scene_cfg.kwargs.robot = "panda"
 kwargs.scene_cfg.kwargs.gripper = "panda_hand"
-kwargs.scene_cfg.kwargs.object = "block"
-kwargs.task_cfg.class = "contact_gym.envs.edge_grasp.EdgeGraspEnvCfg.TaskCfg"
-kwargs.task_cfg.kwargs.high_goal_prob = 0.0
+kwargs.scene_cfg.kwargs.object = "puck"
 
 [[eval_env.env_kwargs.domain_randomizers]] # joint position randomization
 class = "contact_gym.dr.DataStateRandomizer"
@@ -115,18 +118,17 @@ kwargs.noise.kwargs.operation = "add_se3"
 kwargs.noise.kwargs.scalar_first = true
 kwargs.noise.kwargs.sampler.class = "contact_gym.utils.noise.GaussianSampler"
 kwargs.noise.kwargs.sampler.kwargs.mean = 0.0
-kwargs.noise.kwargs.sampler.kwargs.std = [0.05, 0.05, 0.0, 0.0, 0.0, 0.2]
+kwargs.noise.kwargs.sampler.kwargs.std = [0.1, 0.1, 0.0, 0.0, 0.0, 0.4]
 
 [eval_env.tscontroller]
 enabled = true
-controller = "mocap"
+controller = "mink"
 
-[eval_env.tscontroller.mocap_cfg]
-eq_solimp = [0.9, 0.95, 0.01, 0.5, 2.0]
-eq_solref = [0.02, 1.4]
+[eval_env.tscontroller.mink_cfg]
 comp_cfg.bias_mult = 1.0
-param_cfg.kp = [100.0, 100.0, 100.0, 100.0, 50.0, 50.0, 50.0]
+param_cfg.kp = [1000.0, 1000.0, 1000.0, 1000.0, 500.0, 500.0, 500.0]
 param_cfg.damping = 1.0
+mink_cfg.posture_task_cfg.cost = 0.01
 
 [eval_env.actionhistory]
 enabled = true
@@ -191,5 +193,5 @@ verbose = 1
 enabled = false
 
 [training]
-total_timesteps = 2_000_000
+total_timesteps = 4_000_000
 progress_bar = true
