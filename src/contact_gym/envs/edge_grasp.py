@@ -353,6 +353,10 @@ class EdgeGraspEnv(MujocoBaseEnv):
     # region Helpers
 
     def _setup_model_data(self, robot: str, gripper: str) -> EdgeGraspEnv.ModelData:
+        assert int(self.model.geom("object-geom").type[0]) in [
+            mujoco.mjtGeom.mjGEOM_BOX,
+            mujoco.mjtGeom.mjGEOM_CYLINDER,
+        ]
         assert self.model.sensor("gripper_object_contact").dim == 1
         assert self.model.sensor("robot_contact").dim == 3
         rbt_qpos_dim = get_qpos_dim(robot)
@@ -361,8 +365,14 @@ class EdgeGraspEnv(MujocoBaseEnv):
         gri_dof_dim = get_dof_dim_from_joints(self.model, rbt_qpos_dim, gri_qpos_dim)
         table_geom = self.model.geom("table-tabletop")
         table_height = float(table_geom.pos[2] + table_geom.size[2])
+        obj_geom_type = self.model.geom("object-geom").type
         obj_geom_size = self.model.geom("object-geom").size
-        obj_geom_extent = max(obj_geom_size[:-1])
+        if obj_geom_type == mujoco.mjtGeom.mjGEOM_BOX:
+            obj_geom_extent = max(obj_geom_size[:2])
+            obj_geom_height = obj_geom_size[2]
+        else:  # mjGEOM_CYLINDER
+            obj_geom_extent = obj_geom_size[0]
+            obj_geom_height = obj_geom_size[1]
         spawn_range_xy = [s - obj_geom_extent for s in table_geom.size[:2]]
         return EdgeGraspEnv.ModelData(
             gri_qpos_adr=rbt_qpos_dim,
@@ -378,10 +388,10 @@ class EdgeGraspEnv(MujocoBaseEnv):
             table_height=table_height,
             table_extent=float(max(table_geom.size[:2])),
             obj_spawn_min=np.array(
-                [-spawn_range_xy[0], -spawn_range_xy[1], table_height + obj_geom_size[-1] + 1e-3]
+                [-spawn_range_xy[0], -spawn_range_xy[1], table_height + obj_geom_height + 1e-3]
             ),
             obj_spawn_max=np.array(
-                [spawn_range_xy[0], spawn_range_xy[1], table_height + obj_geom_size[-1] + 1e-3]
+                [spawn_range_xy[0], spawn_range_xy[1], table_height + obj_geom_height + 1e-3]
             ),
         )
 
