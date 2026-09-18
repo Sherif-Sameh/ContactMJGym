@@ -4,7 +4,7 @@ import logging
 from abc import ABC, abstractmethod
 from collections import ChainMap
 from enum import StrEnum
-from typing import TYPE_CHECKING, Any, TypeAlias
+from typing import TYPE_CHECKING, Any, ClassVar, TypeAlias
 
 import gymnasium as gym
 import mujoco
@@ -63,6 +63,7 @@ class MujocoBaseEnv(ABC, gym.Env):
     """
 
     metadata = {"render_modes": ["rgb_array", "human"], "render_fps": 50}  # noqa: RUF012
+    DEFAULT_CAMERA_CONFIG: ClassVar = {"type": mujoco.mjtCamera.mjCAMERA_FREE}
 
     def __init__(
         self,
@@ -91,6 +92,7 @@ class MujocoBaseEnv(ABC, gym.Env):
             mujoco.Renderer(self.model, **renderer_kwargs) if render_mode == "rgb_array" else None
         )
         self._viewer = None
+        self._default_camera = self._get_default_camera()
         self.metadata["render_fps"] = int(
             np.round(1.0 / (self.model.opt.timestep * self.frame_skip))
         )
@@ -157,12 +159,13 @@ class MujocoBaseEnv(ABC, gym.Env):
         if self.render_mode == "human":
             if self._viewer is None:
                 self._viewer = mujoco.viewer.launch_passive(self.model, self.data)
+                self._get_default_camera(camera=self._viewer.cam)
             self._viewer.sync()
             return None
         if self._renderer is None:
             self._renderer = mujoco.Renderer(self.model)
-        if self._renderer is None:
-            self._renderer = mujoco.Renderer(self.model)
+        if camera == -1:
+            camera = self._default_camera
         self._renderer.update_scene(self.data, camera=camera)
         return self._renderer.render()
 
@@ -220,6 +223,15 @@ class MujocoBaseEnv(ABC, gym.Env):
         """Get the latest info dict."""
 
     # region Helpers
+
+    def _get_default_camera(self, camera: mujoco.MjvCamera | None = None) -> mujoco.MjvCamera:
+        """Get the environment's default camera for rendering."""
+        camera = mujoco.MjvCamera() if camera is None else camera
+        for attr, value in self.DEFAULT_CAMERA_CONFIG.items():
+            setattr(camera, attr, value)
+        if self._viewer is None:
+            mujoco.mjv_defaultFreeCamera(self.model, camera)
+        return camera
 
     def _set_home_key(self) -> int:
         """Set the home keyframe for free objects in the scene."""

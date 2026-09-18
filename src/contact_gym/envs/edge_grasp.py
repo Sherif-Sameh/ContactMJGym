@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field, fields
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, ClassVar
 
 import mujoco
 import numpy as np
@@ -179,6 +179,14 @@ class EdgeGraspEnv(MujocoBaseEnv):
         render_mode: Environment rendering mode. Default value is None.
         renderer_kwargs: Optional kwargs to pass to :class:`mujoco.Renderer` for rendering.
     """
+
+    DEFAULT_CAMERA_CONFIG: ClassVar = {
+        "type": mujoco.mjtCamera.mjCAMERA_FREE,
+        "lookat": [0.0, 0.5, 0.4],
+        "distance": 1.2,
+        "azimuth": -90,
+        "elevation": -20,
+    }
 
     @dataclass(frozen=True, slots=True)
     class ModelData:
