@@ -61,7 +61,6 @@ def evaluate(
     algo_cls = import_from_path(algo)
 
     vec_env = DummyVecEnv([_make_render_env_fn(env_cfg, render)])
-    vec_env.seed(seed=seed)
 
     if vecnormalize_path is not None:
         vec_env = VecNormalize.load(vecnormalize_path, vec_env)
@@ -79,6 +78,7 @@ def evaluate(
     frame_dt = 1 / vec_env.unwrapped.metadata["render_fps"]
     next_frame = time.perf_counter()
 
+    vec_env.seed(seed=seed)
     episode_rewards, episode_lengths, episode_successes = [], [], []
     for episode in range(n_episodes):
         obs = vec_env.reset()
