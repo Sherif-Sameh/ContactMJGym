@@ -20,7 +20,7 @@
 - **Curriculum Learning:** Curriculums for arbitrary environment attributes, with support for fixed linear and cosine-annealed schedules.
 - **Task-Space Control:** Modular and flexible architecture implemented as action wrappers, supporting an arbitrary number of robots and gripper/no-gripper configurations. Support for configurable compensation terms: full bias, gravity-only, damping, friction, and inertia. Support for fixed or variable stiffness/damping gains and smooth torque control with no MJCF modifications required.
   - **Mocap:** A mocap + weld constraint controller (FetchEnv approach), with the inherited flexibility of the base controller. Supports null-space projection for joint-configuration regularization commands.
-  - **Mink:**: A controller built on [mink](https://github.com/kevinzakka/mink)'s QP formulation and solver. Adds a posture task for regularization and a configuration limit constraint by default, and supports adding further constraints.
+  - **Mink:** A controller built on [mink](https://github.com/kevinzakka/mink)'s QP formulation and solver. Adds a posture task for regularization and a configuration limit constraint by default, and supports adding further constraints.
   - **OSC:** Operational space control with a dynamically consistent Jacobian/null-space projector, decoupled linear/angular dynamics, and configuration regularization via null-space projection.
 - **Teleoperation:** 6-DoF full-pose control plus gripper, speed, and brake control via the keyboard.
 
@@ -152,7 +152,7 @@ These two SB3 examples are meant primarily as setup references for training, not
 
 ## References
 
-### Repositories
+### Software
 
 ```bibtex
 @software{menagerie2022github,
@@ -171,7 +171,11 @@ These two SB3 examples are meant primarily as setup references for training, not
     url = {https://github.com/kevinzakka/mink},
     license = {Apache-2.0}
 }
+```
 
+### Articles
+
+```bibtex
 @article{Khatib1987,
     author  = {Khatib, Oussama},
     title   = {A unified approach for motion and force control of robot manipulators: The operational space formulation},
